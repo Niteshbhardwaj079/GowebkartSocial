@@ -5,22 +5,32 @@ import { logout } from '../../store';
 import ChatbotWidget from '../common/ChatbotWidget';
 
 const NAV_MAIN = [
-  { to:'/dashboard',   icon:'🏠', label:'Dashboard'    },
-  { to:'/create',      icon:'✏️', label:'Create Post', badge:'New' },
-  { to:'/posts',       icon:'📋', label:'All Posts'    },
-  { to:'/calendar',    icon:'📅', label:'Calendar'     },
-  { to:'/inbox',       icon:'📬', label:'Inbox', dot:true },
-  { to:'/analytics',   icon:'📊', label:'Analytics'    },
+  { to:'/dashboard', icon:'🏠', label:'Dashboard' },
+  {
+    icon:'📝', label:'Posts',
+    children: [
+      { to:'/create', icon:'✏️', label:'Create Post', badge:'New' },
+      { to:'/posts',  icon:'📋', label:'All Posts' },
+      { to:'/inbox',  icon:'📬', label:'Inbox', dot:true },
+    ],
+  },
+  { to:'/calendar',  icon:'📅', label:'Calendar'  },
+  { to:'/analytics', icon:'📊', label:'Analytics' },
 ];
 const NAV_MANAGE = [
-  { to:'/accounts',         icon:'🔗', label:'Social Accounts'  },
-  { to:'/api-settings',     icon:'🔑', label:'API Settings'     },
-  { to:'/storage-settings', icon:'💾', label:'Storage Settings' },
-  { to:'/company',          icon:'🏢', label:'Company Profile'  },
-  { to:'/notifications',    icon:'🔔', label:'Notifications'    },
-  { to:'/ads',              icon:'📢', label:'Ads Manager'      },
-  { to:'/plans',            icon:'💎', label:'Plans & Billing'  },
-  { to:'/settings',         icon:'⚙️', label:'Settings'         },
+  { to:'/accounts',      icon:'🔗', label:'Social Accounts' },
+  { to:'/company',       icon:'🏢', label:'Company Profile' },
+  { to:'/notifications', icon:'🔔', label:'Notifications'   },
+  { to:'/ads',           icon:'📢', label:'Ads Manager'     },
+  { to:'/plans',         icon:'💎', label:'Plans & Billing' },
+  {
+    icon:'⚙️', label:'Settings',
+    children: [
+      { to:'/settings',         icon:'👤', label:'General' },
+      { to:'/api-settings',     icon:'🔑', label:'API Keys' },
+      { to:'/storage-settings', icon:'💾', label:'Storage' },
+    ],
+  },
 ];
 const MOB_NAV = [
   { to:'/dashboard', icon:'🏠', label:'Home'   },
@@ -35,6 +45,45 @@ const dropdownItemStyle = {
   fontSize:13, color:'var(--text)', textDecoration:'none', cursor:'pointer',
   transition:'background 0.1s',
 };
+
+// Collapsible group inside the sidebar nav
+function NavGroup({ item, currentPath }) {
+  const isAnyChildActive = item.children.some(c => currentPath === c.to);
+  const [open, setOpen] = useState(isAnyChildActive);
+  useEffect(() => { if (isAnyChildActive) setOpen(true); }, [isAnyChildActive]);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className={`nav-item${isAnyChildActive ? ' active' : ''}`}
+        style={{ width:'100%', textAlign:'left', background:'transparent', border:'none', cursor:'pointer', display:'flex', alignItems:'center' }}
+      >
+        <span className="nav-icon">{item.icon}</span>
+        <span className="nav-label">{item.label}</span>
+        <span style={{ marginLeft:'auto', fontSize:9, opacity:0.6, transform: open ? 'rotate(180deg)' : 'rotate(0)', transition:'transform 0.2s' }}>▼</span>
+      </button>
+      {open && (
+        <div style={{ paddingLeft:18, marginTop:2, marginBottom:4, borderLeft:'1px solid rgba(255,255,255,0.08)', marginLeft:18 }}>
+          {item.children.map(child => (
+            <NavLink
+              key={child.to}
+              to={child.to}
+              className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+              style={{ fontSize:12, padding:'7px 10px', marginLeft:0 }}
+            >
+              <span className="nav-icon" style={{ fontSize:13 }}>{child.icon}</span>
+              <span className="nav-label">{child.label}</span>
+              {child.dot && <span style={{ marginLeft:'auto', width:7, height:7, borderRadius:'50%', background:'#0099ff' }} />}
+              {child.badge && <span className="nav-badge">{child.badge}</span>}
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
 
 export default function Layout() {
   const dispatch = useDispatch();
@@ -68,9 +117,6 @@ export default function Layout() {
 
   const handleLogout = () => { dispatch(logout()); navigate('/login'); };
   const initials  = user?.name?.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2)||'U';
-  const planLimit = user?.plan==='pro'?999999:user?.plan==='basic'?100:30;
-  const usedPosts = user?.usage?.postsThisMonth||0;
-  const usagePct  = Math.min((usedPosts/planLimit)*100,100);
 
   const pageTitles = {
     '/dashboard':'Dashboard','/create':'Create Post','/posts':'All Posts','/calendar':'Calendar',
@@ -118,7 +164,9 @@ export default function Layout() {
         </div>
         <nav className="sidebar-nav">
           <div className="nav-section">Main</div>
-          {NAV_MAIN.map(item => (
+          {NAV_MAIN.map(item => item.children ? (
+            <NavGroup key={item.label} item={item} currentPath={location.pathname} />
+          ) : (
             <NavLink key={item.to} to={item.to} className={({isActive})=>`nav-item${isActive?' active':''}`}>
               <span className="nav-icon">{item.icon}</span>
               <span className="nav-label">{item.label}</span>
@@ -127,7 +175,9 @@ export default function Layout() {
             </NavLink>
           ))}
           <div className="nav-section" style={{marginTop:10}}>Manage</div>
-          {NAV_MANAGE.map(item => (
+          {NAV_MANAGE.map(item => item.children ? (
+            <NavGroup key={item.label} item={item} currentPath={location.pathname} />
+          ) : (
             <NavLink key={item.to} to={item.to} className={({isActive})=>`nav-item${isActive?' active':''}`}>
               <span className="nav-icon">{item.icon}</span>
               <span className="nav-label">{item.label}</span>
@@ -148,30 +198,6 @@ export default function Layout() {
             </NavLink>
           </>}
         </nav>
-
-        {/* Usage bar */}
-        <div style={{padding:'0 14px 10px'}}>
-          <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
-            <span style={{fontSize:10,color:'rgba(255,255,255,0.45)'}}>Posts this month</span>
-            <span style={{fontSize:10,color:'#0099ff',fontWeight:700}}>{usedPosts}/{user?.plan==='pro'?'∞':planLimit}</span>
-          </div>
-          <div style={{background:'rgba(255,255,255,0.12)',borderRadius:4,height:4,overflow:'hidden'}}>
-            <div style={{width:`${usagePct}%`,height:'100%',background:usagePct>80?'#ff4444':'#0099ff',borderRadius:4,transition:'width 0.5s'}}/>
-          </div>
-        </div>
-
-        <div className="sidebar-footer">
-          <div className="user-pill">
-            <div className="avatar" style={{width:30,height:30,fontSize:12}}>{initials}</div>
-            <div style={{flex:1,minWidth:0}}>
-              <div className="user-name truncate" style={{fontSize:12}}>{user?.name||'User'}</div>
-              <div className="user-plan">{user?.plan||'free'} plan</div>
-            </div>
-          </div>
-          <button className="btn btn-sm w-full mt-2" style={{justifyContent:'center',background:'rgba(255,255,255,0.1)',color:'rgba(255,255,255,0.65)',border:'none',fontSize:12}} onClick={handleLogout}>
-            🚪 Logout
-          </button>
-        </div>
       </aside>
 
       <div className="main-content">
