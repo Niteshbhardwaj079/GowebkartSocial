@@ -40,7 +40,7 @@ export default function Layout() {
   // Company branding
   const company     = user?.company;
   const companyLogo = company?.logo || null;
-  const companyName = company?.name || 'SocialSaaS';
+  const companyName = company?.name || 'GowebkartSocial';
 
   useEffect(() => { setSidebarOpen(false); }, [location.pathname]);
   useEffect(() => {
@@ -61,7 +61,7 @@ export default function Layout() {
     '/ads':'Ads Manager','/plans':'Plans','/settings':'Settings',
     '/admin':'Admin','/superadmin':'Super Admin','/expiry-settings':'Expiry Settings'
   };
-  const pageTitle = pageTitles[location.pathname]||'SocialSaaS';
+  const pageTitle = pageTitles[location.pathname]||'GowebkartSocial';
 
   // Browser tab title update karo
   useEffect(() => {
@@ -94,7 +94,7 @@ export default function Layout() {
             // Default logo
             <>
               <div className="logo-icon">⚡</div>
-              <span className="logo-text">Social<span>SAAS</span></span>
+              <span className="logo-text">Gowebkart<span>Social</span></span>
             </>
           )}
         </div>

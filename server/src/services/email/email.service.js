@@ -28,7 +28,7 @@ class EmailService {
       }
       const transporter = this._getTransporter();
       const info = await transporter.sendMail({
-        from: process.env.EMAIL_FROM || `${process.env.EMAIL_SENDER_NAME || 'SocialSaaS'} <${process.env.EMAIL_USER}>`,
+        from: process.env.EMAIL_FROM || `${process.env.EMAIL_SENDER_NAME || 'GowebkartSocial'} <${process.env.EMAIL_USER}>`,
         to, subject, html, text: text || subject
       });
       logger.info(`✅ Email sent: ${to} [${info.messageId}]`);

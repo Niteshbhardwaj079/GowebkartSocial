@@ -495,7 +495,7 @@ export const GUIDES = {
       { text: 'Gmail account mein jaao → Settings (gear icon)', link: 'https://myaccount.google.com/security', linkText: 'Google Security' },
       { text: '"2-Step Verification" enable karo (agar nahi hai to)' },
       { text: 'Wapas Security mein jaao → "App passwords" search karo' },
-      { text: '"Select app: Mail" → "Select device: Other" → naam dalo "SocialSaaS"' },
+      { text: '"Select app: Mail" → "Select device: Other" → naam dalo "GowebkartSocial"' },
       { text: '16-character password generate hoga — copy karo', warning: 'Ye password sirf ek baar dikhega!' },
       { text: '.env mein paste karo:', code: 'EMAIL_USER=apka@gmail.com\nEMAIL_PASS=xxxx xxxx xxxx xxxx' },
     ]

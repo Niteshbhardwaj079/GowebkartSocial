@@ -81,7 +81,7 @@ export default function PlansPage() {
         key:         payConfig.keyId,
         amount:      order.amount,
         currency:    order.currency,
-        name:        'SocialSaaS',
+        name:        'GowebkartSocial',
         description: `${plan.label} Plan — ${billing==='yearly'?'Yearly':'Monthly'}`,
         order_id:    order.id,
         prefill:     { name: userInfo.name, email: userInfo.email },

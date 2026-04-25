@@ -153,7 +153,7 @@ export default function ChatbotWidget() {
   useEffect(() => {
     const welcome = {
       id: 1, from: 'bot', time: getTime(),
-      text: `Namaste ${user?.name?.split(' ')[0] || 'aap'}! 👋\n\nMain **SocialSaaS Assistant** hoon. Aapki kya help kar sakta hoon?\n\nNeeche se koi topic choose karein ya seedha likhein:`,
+      text: `Namaste ${user?.name?.split(' ')[0] || 'aap'}! 👋\n\nMain **GowebkartSocial Assistant** hoon. Aapki kya help kar sakta hoon?\n\nNeeche se koi topic choose karein ya seedha likhein:`,
       links: []
     };
     setMessages([welcome]);
@@ -260,7 +260,7 @@ export default function ChatbotWidget() {
           <div style={{ background: 'linear-gradient(135deg, #0066cc, #0099ff)', padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
             <div style={{ width: 36, height: 36, background: 'rgba(255,255,255,0.2)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>🤖</div>
             <div style={{ flex: 1 }}>
-              <div style={{ color: '#fff', fontWeight: 800, fontSize: 14 }}>SocialSaaS Assistant</div>
+              <div style={{ color: '#fff', fontWeight: 800, fontSize: 14 }}>GowebkartSocial Assistant</div>
               <div style={{ color: 'rgba(255,255,255,0.75)', fontSize: 11 }}>• Online — instant help!</div>
             </div>
             <button onClick={() => setShowTicket(!showTicket)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 8, padding: '5px 10px', color: '#fff', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>

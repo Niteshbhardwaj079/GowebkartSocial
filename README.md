@@ -1,4 +1,4 @@
-# ⚡ SocialSaaS — Social Media Management Platform
+# ⚡ GowebkartSocial — Social Media Management Platform
 
 Complete Hootsuite/Buffer clone for Indian market.
 

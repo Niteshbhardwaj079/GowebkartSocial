@@ -46,7 +46,7 @@ async function seed() {
     const existingAdmin = await User.findOne({ role: 'superadmin' });
     if (!existingAdmin) {
       const company = await Company.create({
-        name: 'SocialSaaS HQ',
+        name: 'GowebkartSocial HQ',
         planLimits: { maxUsers: 999999, maxSocialAccounts: 999999, postsPerMonth: 999999, aiCallsPerDay: 999999, adsAccess: true }
       });
 

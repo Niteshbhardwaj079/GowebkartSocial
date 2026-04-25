@@ -74,7 +74,7 @@ class ChatbotService {
       {
         patterns: ['email', 'otp nahi aaya', 'mail nahi', 'notification mail', 'gmail', 'email setup'],
         response: {
-          text: '📧 **Email Setup:**\n\n1. Gmail account → Security → 2-Step Verification enable karo\n2. "App Passwords" search karo\n3. Mail → Other → "SocialSaaS" naam dao\n4. 16-digit password generate hoga\n5. Server .env mein:\n`EMAIL_USER=apka@gmail.com`\n`EMAIL_PASS=xxxx xxxx xxxx xxxx`',
+          text: '📧 **Email Setup:**\n\n1. Gmail account → Security → 2-Step Verification enable karo\n2. "App Passwords" search karo\n3. Mail → Other → "GowebkartSocial" naam dao\n4. 16-digit password generate hoga\n5. Server .env mein:\n`EMAIL_USER=apka@gmail.com`\n`EMAIL_PASS=xxxx xxxx xxxx xxxx`',
           links: [{ text: 'Google Security', url: 'https://myaccount.google.com/security', external: true }],
           category: 'email'
         }

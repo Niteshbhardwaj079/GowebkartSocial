@@ -14,7 +14,7 @@ const getCompanyInfo = async (userId) => {
 
 // ── Base template — sab emails iske andar jayenge ──
 const baseTemplate = ({ company, title, preheader, body, footer }) => {
-  const companyName  = company?.name    || 'SocialSaaS';
+  const companyName  = company?.name    || 'GowebkartSocial';
   const companyLogo  = company?.logo    || null;
   const primaryColor = company?.branding?.primaryColor   || '#0066cc';
   const secondaryColor = company?.branding?.secondaryColor || '#0099ff';
@@ -126,14 +126,14 @@ const templates = {
 
   // 1. OTP VERIFICATION
   otp: ({ name, otp, expireMinutes = 10, company }) => ({
-    subject: `${otp} — Email Verify Karein | ${company?.name || 'SocialSaaS'}`,
+    subject: `${otp} — Email Verify Karein | ${company?.name || 'GowebkartSocial'}`,
     html: baseTemplate({
       company,
       title: 'Email Verification OTP',
       preheader: `Aapka OTP: ${otp} — ${expireMinutes} minutes mein expire hoga`,
       body: `
         <div class="greeting">Namaste ${name}! 👋</div>
-        <p>Aapka <strong>${company?.name || 'SocialSaaS'}</strong> account verify karne ke liye yeh OTP use karein:</p>
+        <p>Aapka <strong>${company?.name || 'GowebkartSocial'}</strong> account verify karne ke liye yeh OTP use karein:</p>
 
         <div class="otp-box">
           <div class="otp-code">${otp}</div>
@@ -141,7 +141,7 @@ const templates = {
         </div>
 
         <div class="info-box warning">
-          <p>🔒 <strong>Security:</strong> Yeh OTP kisi ke saath share mat karein. ${company?.name || 'SocialSaaS'} team kabhi bhi OTP nahi maangti.</p>
+          <p>🔒 <strong>Security:</strong> Yeh OTP kisi ke saath share mat karein. ${company?.name || 'GowebkartSocial'} team kabhi bhi OTP nahi maangti.</p>
         </div>
 
         <p style="font-size:13px;color:#94a3b8;">Agar aapne account nahi banaya to is email ko ignore karein — koi action nahi lena.</p>
@@ -151,14 +151,14 @@ const templates = {
 
   // 2. WELCOME EMAIL
   welcome: ({ name, plan = 'free', company }) => ({
-    subject: `🎉 Welcome to ${company?.name || 'SocialSaaS'}! Shuru karein`,
+    subject: `🎉 Welcome to ${company?.name || 'GowebkartSocial'}! Shuru karein`,
     html: baseTemplate({
       company,
-      title: `Welcome to ${company?.name || 'SocialSaaS'}`,
+      title: `Welcome to ${company?.name || 'GowebkartSocial'}`,
       preheader: `Namaste ${name}! Aapka account ready hai — ab social media manage karein!`,
       body: `
         <div class="greeting">Welcome, ${name}! 🎉</div>
-        <p>Aapka <strong>${company?.name || 'SocialSaaS'}</strong> account successfully create ho gaya hai! Ab aap apne sab social media accounts ek jagah manage kar sakte hain.</p>
+        <p>Aapka <strong>${company?.name || 'GowebkartSocial'}</strong> account successfully create ho gaya hai! Ab aap apne sab social media accounts ek jagah manage kar sakte hain.</p>
 
         <div class="info-box success">
           <p>✅ <strong>Aapka Plan:</strong> <span class="tag blue">${plan.toUpperCase()}</span> — Successfully activated!</p>
@@ -181,14 +181,14 @@ const templates = {
 
   // 3a. PASSWORD RESET — OTP version
   passwordResetOtp: ({ name, otp, expireMinutes = 10, company }) => ({
-    subject: `${otp} — Password Reset OTP | ${company?.name || 'SocialSaaS'}`,
+    subject: `${otp} — Password Reset OTP | ${company?.name || 'GowebkartSocial'}`,
     html: baseTemplate({
       company,
       title: 'Password Reset OTP',
       preheader: `Aapka password reset OTP: ${otp} — ${expireMinutes} minutes mein expire hoga`,
       body: `
         <div class="greeting">Namaste ${name}! 🔑</div>
-        <p>Aapne <strong>${company?.name || 'SocialSaaS'}</strong> account ka password reset request kiya hai. Yeh OTP use karein:</p>
+        <p>Aapne <strong>${company?.name || 'GowebkartSocial'}</strong> account ka password reset request kiya hai. Yeh OTP use karein:</p>
 
         <div class="otp-box">
           <div class="otp-code">${otp}</div>
@@ -196,7 +196,7 @@ const templates = {
         </div>
 
         <div class="info-box warning">
-          <p>🔒 <strong>Security:</strong> Agar aapne password reset request nahi kiya to is email ko ignore karein. Aapka password safe hai. ${company?.name || 'SocialSaaS'} team kabhi OTP nahi maangti.</p>
+          <p>🔒 <strong>Security:</strong> Agar aapne password reset request nahi kiya to is email ko ignore karein. Aapka password safe hai. ${company?.name || 'GowebkartSocial'} team kabhi OTP nahi maangti.</p>
         </div>
       `
     })
@@ -204,14 +204,14 @@ const templates = {
 
   // 3b. PASSWORD RESET — link version (kept for backward compat)
   passwordReset: ({ name, resetUrl, company }) => ({
-    subject: `🔑 Password Reset — ${company?.name || 'SocialSaaS'}`,
+    subject: `🔑 Password Reset — ${company?.name || 'GowebkartSocial'}`,
     html: baseTemplate({
       company,
       title: 'Password Reset Request',
       preheader: 'Aapne password reset request ki hai — 30 minutes mein expire hoga',
       body: `
         <div class="greeting">Password Reset</div>
-        <p>Namaste <strong>${name}</strong>, aapne <strong>${company?.name || 'SocialSaaS'}</strong> account ka password reset request kiya hai.</p>
+        <p>Namaste <strong>${name}</strong>, aapne <strong>${company?.name || 'GowebkartSocial'}</strong> account ka password reset request kiya hai.</p>
 
         <div class="btn-wrap">
           <a href="${resetUrl}" class="btn">🔑 Password Reset Karein</a>
@@ -230,7 +230,7 @@ const templates = {
 
   // 4. TAG ALERT
   tagAlert: ({ name, taggedBy, platform, content, accountName, company }) => ({
-    subject: `🏷️ ${taggedBy} ne aapko ${platform} par tag kiya — ${company?.name || 'SocialSaaS'}`,
+    subject: `🏷️ ${taggedBy} ne aapko ${platform} par tag kiya — ${company?.name || 'GowebkartSocial'}`,
     html: baseTemplate({
       company,
       title: 'New Tag Alert',
@@ -337,7 +337,7 @@ const templates = {
 
   // 7. TICKET CONFIRMATION — Client ko confirmation
   ticketConfirmation: ({ ticketId, name, subject, estimatedTime, company }) => ({
-    subject: `✅ Support Request Received [#${ticketId}] — ${company?.name || 'SocialSaaS'}`,
+    subject: `✅ Support Request Received [#${ticketId}] — ${company?.name || 'GowebkartSocial'}`,
     html: baseTemplate({
       company,
       title: 'Support Request Received',
@@ -368,7 +368,7 @@ const templates = {
 
   // 8. POST PUBLISHED
   postPublished: ({ name, postText, platforms, publishedAt, company }) => ({
-    subject: `✅ Post Published — ${company?.name || 'SocialSaaS'}`,
+    subject: `✅ Post Published — ${company?.name || 'GowebkartSocial'}`,
     html: baseTemplate({
       company,
       title: 'Post Successfully Published',
@@ -390,7 +390,7 @@ const templates = {
 
   // 9. POST FAILED
   postFailed: ({ name, postText, platforms, error, company }) => ({
-    subject: `❌ Post Failed — Action Required | ${company?.name || 'SocialSaaS'}`,
+    subject: `❌ Post Failed — Action Required | ${company?.name || 'GowebkartSocial'}`,
     html: baseTemplate({
       company,
       title: 'Post Failed',

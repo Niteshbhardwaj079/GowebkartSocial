@@ -11,7 +11,7 @@ const expiryTemplates = {
     const borderColor = { danger: '#ffcccc', warning: '#ffe0a0', info: '#c0d4ff' };
 
     return {
-      subject: `${emoji} Aapka ${plan.toUpperCase()} Plan ${daysLeft} din mein expire ho raha hai — ${company?.name || 'SocialSaaS'}`,
+      subject: `${emoji} Aapka ${plan.toUpperCase()} Plan ${daysLeft} din mein expire ho raha hai — ${company?.name || 'GowebkartSocial'}`,
       html: baseTemplate({
         company,
         title: `Plan Expiry — ${daysLeft} Days Left`,
@@ -51,7 +51,7 @@ const expiryTemplates = {
 
   // ── Plan Expired ──
   planExpired: ({ name, plan, renewUrl, company }) => ({
-    subject: `❌ Aapka ${plan.toUpperCase()} Plan Expire Ho Gaya — ${company?.name || 'SocialSaaS'}`,
+    subject: `❌ Aapka ${plan.toUpperCase()} Plan Expire Ho Gaya — ${company?.name || 'GowebkartSocial'}`,
     html: baseTemplate({
       company,
       title: 'Plan Expired',
@@ -110,7 +110,7 @@ const expiryTemplates = {
 
   // ── Payment Success ──
   paymentSuccess: ({ name, plan, amount, orderId, startDate, endDate, company }) => ({
-    subject: `✅ Payment Successful — ${plan.toUpperCase()} Plan Activated! | ${company?.name || 'SocialSaaS'}`,
+    subject: `✅ Payment Successful — ${plan.toUpperCase()} Plan Activated! | ${company?.name || 'GowebkartSocial'}`,
     html: baseTemplate({
       company,
       title: 'Payment Successful!',

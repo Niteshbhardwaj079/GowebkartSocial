@@ -33,7 +33,7 @@ exports.testEmail = async (req, res) => {
     const user = req.user;
     const result = await emailService.sendEmail({
       to: user.email,
-      subject: '✅ Test Email — SocialSaaS',
+      subject: '✅ Test Email — GowebkartSocial',
       html: `<div style="font-family:Arial,sans-serif;padding:20px"><h2>✅ Email kaam kar raha hai!</h2><p>Namaste <strong>${user.name}</strong>, aapki email notifications sahi se configure hain.</p></div>`
     });
     if (result.dev) {

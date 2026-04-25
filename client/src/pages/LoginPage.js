@@ -158,7 +158,7 @@ export default function LoginPage() {
         <div style={{ width:'100%',maxWidth:340 }}>
           <div style={{ display:'flex',alignItems:'center',gap:10,marginBottom:24,justifyContent:'center' }}>
             <div style={{ width:34,height:34,background:'linear-gradient(135deg,#0066cc,#0099ff)',borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16 }}>⚡</div>
-            <span style={{ fontFamily:"'Poppins',sans-serif",fontSize:18,fontWeight:800 }}>Social<span style={{color:'#0066cc'}}>SAAS</span></span>
+            <span style={{ fontFamily:"'Poppins',sans-serif",fontSize:18,fontWeight:800 }}>Gowebkart<span style={{color:'#0066cc'}}>Social</span></span>
           </div>
 
           <div className="toggle-wrap mb-4">
