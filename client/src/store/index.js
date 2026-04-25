@@ -8,15 +8,19 @@ import { toast } from 'react-toastify';
 export const loginUser = createAsyncThunk('auth/login', async (data, { rejectWithValue }) => {
   try {
     const res = await authAPI.login(data);
-    localStorage.setItem('token', res.data.token);
+    if (res.data.token) localStorage.setItem('token', res.data.token);
     return res.data;
-  } catch (e) { return rejectWithValue(e.response?.data?.message || 'Login failed'); }
+  } catch (e) {
+    const data = e.response?.data;
+    if (data?.requireOTP) return rejectWithValue(data);   // pass full payload so UI can read requireOTP/email
+    return rejectWithValue(data?.message || 'Login failed');
+  }
 });
 
 export const registerUser = createAsyncThunk('auth/register', async (data, { rejectWithValue }) => {
   try {
     const res = await authAPI.register(data);
-    localStorage.setItem('token', res.data.token);
+    if (res.data.token) localStorage.setItem('token', res.data.token);
     return res.data;
   } catch (e) { return rejectWithValue(e.response?.data?.message || 'Registration failed'); }
 });
@@ -36,14 +40,24 @@ export const fetchMe = createAsyncThunk('auth/me', async (_, { rejectWithValue }
   } catch (e) { return rejectWithValue(e.response?.data?.message); }
 });
 
+// Sanitize stored token (could be the literal string "undefined" from older bad writes)
+const _storedToken = (() => {
+  const t = localStorage.getItem('token');
+  if (!t || t === 'undefined' || t === 'null') {
+    localStorage.removeItem('token');
+    return null;
+  }
+  return t;
+})();
+
 const authSlice = createSlice({
   name: 'auth',
   initialState: {
     user:    null,
-    token:   localStorage.getItem('token'),
+    token:   _storedToken,
     loading: false,
     error:   null,
-    isAuthenticated: !!localStorage.getItem('token')
+    isAuthenticated: !!_storedToken
   },
   reducers: {
     logout: (state) => {
@@ -57,18 +71,33 @@ const authSlice = createSlice({
   extraReducers: (b) => {
     const pending  = (s) => { s.loading = true; s.error = null; };
     const rejected = (s, a) => { s.loading = false; s.error = a.payload; };
+    // Only mark authenticated when the response actually contains a token.
+    // Register/unverified-login responses contain { requireOTP, email } and NO token.
     const fulfilled = (s, a) => {
       s.loading = false;
-      s.user    = a.payload.user;
-      s.token   = a.payload.token;
-      s.isAuthenticated = true;
+      if (a.payload?.token) {
+        s.user    = a.payload.user;
+        s.token   = a.payload.token;
+        s.isAuthenticated = true;
+      }
     };
     b.addCase(loginUser.pending, pending)
-     .addCase(loginUser.fulfilled, (s, a) => { fulfilled(s, a); toast.success('Login successful! 🎉'); })
-     .addCase(loginUser.rejected, rejected)
+     .addCase(loginUser.fulfilled, (s, a) => { fulfilled(s, a); if (a.payload?.token) toast.success('Login successful! 🎉'); })
+     .addCase(loginUser.rejected, (s, a) => {
+       rejected(s, a);
+       if (a.payload?.requireOTP) toast.info(a.payload.message || '📧 OTP bheja gaya — verify karein');
+       else if (typeof a.payload === 'string') toast.error(a.payload);
+     })
      .addCase(registerUser.pending, pending)
-     .addCase(registerUser.fulfilled, (s, a) => { fulfilled(s, a); toast.success('Welcome! Account created 🎉'); })
-     .addCase(registerUser.rejected, rejected)
+     .addCase(registerUser.fulfilled, (s, a) => {
+       fulfilled(s, a);
+       if (a.payload?.token) toast.success('Welcome! Account created 🎉');
+       else if (a.payload?.requireOTP) toast.info(a.payload.message || '📧 OTP bheja gaya — verify karein');
+     })
+     .addCase(registerUser.rejected, (s, a) => {
+       rejected(s, a);
+       if (typeof a.payload === 'string') toast.error(a.payload);
+     })
      .addCase(demoLogin.pending, pending)
      .addCase(demoLogin.fulfilled, (s, a) => { fulfilled(s, a); toast.success('Demo mode active 🎭'); })
      .addCase(demoLogin.rejected, rejected)
