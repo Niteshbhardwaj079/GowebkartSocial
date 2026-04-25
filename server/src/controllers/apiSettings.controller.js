@@ -44,18 +44,21 @@ exports.saveFacebookKeys = async (req, res) => {
       return res.status(400).json({ success: false, message: 'App ID and App Secret required' });
     }
 
-    // Pehle test karo ki keys sahi hain
+    // Validate keys by calling /{appId} with the app access token (appId|appSecret).
+    // /me only works with USER tokens; calling it with an app token always fails —
+    // that was the original bug producing a spurious "Invalid keys" error.
     try {
-      const testRes = await axios.get('https://graph.facebook.com/v18.0/me', {
-        params: {
-          access_token: `${appId}|${appSecret}`,
-          fields: 'id'
-        }
+      await axios.get(`https://graph.facebook.com/v18.0/${appId}`, {
+        params: { access_token: `${appId}|${appSecret}`, fields: 'id,name' }
       });
     } catch (testErr) {
+      const fbMsg = testErr.response?.data?.error?.message;
+      logger.warn(`FB key validation failed: ${fbMsg || testErr.message}`);
       return res.status(400).json({
         success: false,
-        message: 'Invalid Facebook App ID or Secret. Please check and try again.'
+        message: fbMsg
+          ? `Facebook says: ${fbMsg}`
+          : 'Could not reach Facebook to verify keys. Check the App ID and try again.'
       });
     }
 
