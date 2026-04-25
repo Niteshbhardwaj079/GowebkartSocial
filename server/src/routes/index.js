@@ -157,23 +157,45 @@ socialRouter.delete('/accounts/:id', protect, async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-socialRouter.get('/facebook/connect', protect, (req, res) => {
-  if (!process.env.FACEBOOK_APP_ID || process.env.FACEBOOK_APP_ID === 'baad_mein') {
-    return res.status(400).json({ success: false, message: 'Facebook API keys nahi mili — Render env me FACEBOOK_APP_ID + FACEBOOK_APP_SECRET set karein' });
+// Resolve which FB app credentials to use for a given user — prefer the
+// user's own keys (saved via API Settings), fall back to global Render env.
+async function resolveFbAppCreds(userId) {
+  try {
+    const UserApiSettings = require('../models/UserApiSettings.model');
+    const us = await UserApiSettings.findOne({ user: userId })
+      .select('+facebook.appId +facebook.appSecret');
+    if (us?.facebook?.appId && us?.facebook?.appSecret) {
+      return { appId: us.facebook.appId, appSecret: us.facebook.appSecret, source: 'user' };
+    }
+  } catch {}
+  if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_ID !== 'baad_mein' &&
+      process.env.FACEBOOK_APP_SECRET) {
+    return { appId: process.env.FACEBOOK_APP_ID, appSecret: process.env.FACEBOOK_APP_SECRET, source: 'env' };
+  }
+  return null;
+}
+
+socialRouter.get('/facebook/connect', protect, async (req, res) => {
+  const creds = await resolveFbAppCreds(req.user._id);
+  if (!creds) {
+    return res.status(400).json({
+      success: false,
+      message: 'Facebook keys missing. API Settings me apne FB App ID/Secret save karein, ya Render env me FACEBOOK_APP_ID/FACEBOOK_APP_SECRET set karein.',
+    });
   }
   if (!process.env.SERVER_URL) {
     return res.status(500).json({ success: false, message: 'SERVER_URL env var missing — OAuth callback nahi banega' });
   }
   const params = new URLSearchParams({
-    client_id: process.env.FACEBOOK_APP_ID,
+    client_id:    creds.appId,
     redirect_uri: `${process.env.SERVER_URL}/api/social/callback/facebook`,
     // public_profile + email = Login.  pages_show_list = enumerate user's Pages.
     // pages_manage_posts/pages_read_engagement = FB page posting + insights.
     // instagram_basic/instagram_content_publish = IG Business posting.
     // business_management = needed for some IG Graph endpoints.
-    scope: 'public_profile,email,pages_show_list,pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish,business_management',
+    scope:         'public_profile,email,pages_show_list,pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish,business_management',
     response_type: 'code',
-    state: req.user._id.toString(),
+    state:         req.user._id.toString(),
   });
   res.json({ url: `https://www.facebook.com/v18.0/dialog/oauth?${params}` });
 });
@@ -219,11 +241,23 @@ socialRouter.get('/callback/facebook', async (req, res) => {
   }
 
   try {
+    // Use the SAME app credentials the user started OAuth with. Per-user
+    // keys (from API Settings) take priority; otherwise fall back to env.
+    // Without this, an OAuth started with user keys is rejected by the
+    // exchange call using global keys ("App ID mismatch") and the
+    // SocialAccount row never gets saved.
+    const creds = await resolveFbAppCreds(userId);
+    if (!creds) {
+      logger.warn(`FB callback: no app creds available for user ${userId}`);
+      return res.redirect(`${process.env.CLIENT_URL}/accounts?error=fb&msg=${encodeURIComponent('FB app credentials missing on server')}`);
+    }
+    logger.info(`FB callback using ${creds.source} keys for user ${userId}`);
+
     // 1. Exchange code → short-lived token
     const tokenRes = await axios.get('https://graph.facebook.com/v18.0/oauth/access_token', {
       params: {
-        client_id:     process.env.FACEBOOK_APP_ID,
-        client_secret: process.env.FACEBOOK_APP_SECRET,
+        client_id:     creds.appId,
+        client_secret: creds.appSecret,
         redirect_uri:  `${process.env.SERVER_URL}/api/social/callback/facebook`,
         code,
       },
@@ -236,8 +270,8 @@ socialRouter.get('/callback/facebook', async (req, res) => {
       const llRes = await axios.get('https://graph.facebook.com/v18.0/oauth/access_token', {
         params: {
           grant_type:        'fb_exchange_token',
-          client_id:         process.env.FACEBOOK_APP_ID,
-          client_secret:     process.env.FACEBOOK_APP_SECRET,
+          client_id:         creds.appId,
+          client_secret:     creds.appSecret,
           fb_exchange_token: shortToken,
         },
       });
