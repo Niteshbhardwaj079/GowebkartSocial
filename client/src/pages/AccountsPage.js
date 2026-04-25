@@ -4,11 +4,12 @@ import { toast } from 'react-toastify';
 import api from '../services/api';
 
 const accountsAPI = {
-  getAccounts:   ()  => api.get('/social/accounts'),
-  disconnect:    (id)=> api.delete(`/social/accounts/${id}`),
-  connectFacebook: ()=> api.get('/social/facebook/connect'),
-  connectTwitter:  ()=> api.get('/social/twitter/connect'),
-  connectLinkedIn: ()=> api.get('/social/linkedin/connect'),
+  getAccounts:    ()  => api.get('/social/accounts'),
+  disconnect:     (id)=> api.delete(`/social/accounts/${id}`),
+  connectFacebook:()  => api.get('/social/facebook/connect'),
+  connectTwitter: ()  => api.get('/social/twitter/connect'),
+  connectLinkedIn:()  => api.get('/social/linkedin/connect'),
+  diagnostics:    ()  => api.get('/social/diagnostics'),
 };
 
 const PLATFORMS = [
@@ -31,6 +32,27 @@ export default function AccountsPage() {
   };
 
   useEffect(() => { loadAccounts(); }, []);
+
+  // Surface OAuth callback result via query params (?connected=facebook&pages=2&ig=1 / ?error=fb&msg=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const connected = params.get('connected');
+    const error = params.get('error');
+    const msg   = params.get('msg');
+    if (connected === 'facebook') {
+      const pages = params.get('pages') || 0;
+      const ig    = params.get('ig')    || 0;
+      toast.success(`✅ Facebook connected — ${pages} page(s), ${ig} Instagram account(s)`);
+    } else if (connected) {
+      toast.success(`✅ ${connected} connected`);
+    } else if (error) {
+      toast.error(`❌ ${error.toUpperCase()} connect failed: ${msg || 'unknown error'}`);
+    }
+    if (connected || error) {
+      // Clean the URL so refresh doesn't re-trigger
+      window.history.replaceState({}, '', '/accounts');
+    }
+  }, []);
 
   const handleConnect = async (platform) => {
     try {

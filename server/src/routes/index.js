@@ -117,6 +117,32 @@ analyticsRouter.get('/dashboard', protect, async (req, res) => {
 const socialRouter = express.Router();
 const axios        = require('axios');
 
+// Diagnostics — superadmin can verify which platform creds are configured.
+// Never leaks the actual values, just presence + length.
+socialRouter.get('/diagnostics', protect, authorize('admin', 'superadmin'), (req, res) => {
+  const checkEnv = (key) => {
+    const v = process.env[key];
+    if (!v || v === 'baad_mein') return { set: false };
+    return { set: true, length: v.length };
+  };
+  res.json({
+    success: true,
+    env: {
+      SERVER_URL: process.env.SERVER_URL || null,
+      CLIENT_URL: process.env.CLIENT_URL || null,
+      facebook: { appId: checkEnv('FACEBOOK_APP_ID'), appSecret: checkEnv('FACEBOOK_APP_SECRET') },
+      twitter:  { apiKey: checkEnv('TWITTER_API_KEY'), apiSecret: checkEnv('TWITTER_API_SECRET') },
+      linkedin: { clientId: checkEnv('LINKEDIN_CLIENT_ID'), clientSecret: checkEnv('LINKEDIN_CLIENT_SECRET') },
+      youtube:  { clientId: checkEnv('YOUTUBE_CLIENT_ID'), clientSecret: checkEnv('YOUTUBE_CLIENT_SECRET') },
+    },
+    expectedRedirects: process.env.SERVER_URL ? {
+      facebook: `${process.env.SERVER_URL}/api/social/callback/facebook`,
+      twitter:  `${process.env.SERVER_URL}/api/social/callback/twitter`,
+      linkedin: `${process.env.SERVER_URL}/api/social/callback/linkedin`,
+    } : null,
+  });
+});
+
 socialRouter.get('/accounts', protect, async (req, res) => {
   try {
     const accounts = await SocialAccount.find({ user: req.user._id, isActive: true }).select('-accessToken -refreshToken');
@@ -133,13 +159,21 @@ socialRouter.delete('/accounts/:id', protect, async (req, res) => {
 
 socialRouter.get('/facebook/connect', protect, (req, res) => {
   if (!process.env.FACEBOOK_APP_ID || process.env.FACEBOOK_APP_ID === 'baad_mein') {
-    return res.status(400).json({ success: false, message: 'Facebook API keys add karein (API Settings mein)' });
+    return res.status(400).json({ success: false, message: 'Facebook API keys nahi mili — Render env me FACEBOOK_APP_ID + FACEBOOK_APP_SECRET set karein' });
+  }
+  if (!process.env.SERVER_URL) {
+    return res.status(500).json({ success: false, message: 'SERVER_URL env var missing — OAuth callback nahi banega' });
   }
   const params = new URLSearchParams({
     client_id: process.env.FACEBOOK_APP_ID,
     redirect_uri: `${process.env.SERVER_URL}/api/social/callback/facebook`,
-    scope: 'pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish,ads_management',
-    state: req.user._id.toString()
+    // public_profile + email = Login.  pages_show_list = enumerate user's Pages.
+    // pages_manage_posts/pages_read_engagement = FB page posting + insights.
+    // instagram_basic/instagram_content_publish = IG Business posting.
+    // business_management = needed for some IG Graph endpoints.
+    scope: 'public_profile,email,pages_show_list,pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish,business_management',
+    response_type: 'code',
+    state: req.user._id.toString(),
   });
   res.json({ url: `https://www.facebook.com/v18.0/dialog/oauth?${params}` });
 });
@@ -172,21 +206,134 @@ socialRouter.get('/linkedin/connect', protect, (req, res) => {
 
 // OAuth Callbacks
 socialRouter.get('/callback/facebook', async (req, res) => {
+  const logger = require('../utils/logger');
+  const { code, state: userId, error, error_description } = req.query;
+
+  // FB returned an OAuth error directly (e.g., user denied permission)
+  if (error) {
+    logger.warn(`FB OAuth user-side error: ${error} — ${error_description}`);
+    return res.redirect(`${process.env.CLIENT_URL}/accounts?error=fb&msg=${encodeURIComponent(error_description || error)}`);
+  }
+  if (!code || !userId) {
+    return res.redirect(`${process.env.CLIENT_URL}/accounts?error=fb&msg=${encodeURIComponent('Missing code or state')}`);
+  }
+
   try {
-    const { code, state: userId } = req.query;
+    // 1. Exchange code → short-lived token
     const tokenRes = await axios.get('https://graph.facebook.com/v18.0/oauth/access_token', {
-      params: { client_id: process.env.FACEBOOK_APP_ID, client_secret: process.env.FACEBOOK_APP_SECRET, redirect_uri: `${process.env.SERVER_URL}/api/social/callback/facebook`, code }
+      params: {
+        client_id:     process.env.FACEBOOK_APP_ID,
+        client_secret: process.env.FACEBOOK_APP_SECRET,
+        redirect_uri:  `${process.env.SERVER_URL}/api/social/callback/facebook`,
+        code,
+      },
     });
-    const token   = tokenRes.data.access_token;
-    const userRes = await axios.get('https://graph.facebook.com/v18.0/me', { params: { fields: 'id,name,picture', access_token: token } });
-    const fbUser  = userRes.data;
+    const shortToken = tokenRes.data.access_token;
+
+    // 2. Exchange short-lived → long-lived (60 day) token
+    let longToken = shortToken;
+    try {
+      const llRes = await axios.get('https://graph.facebook.com/v18.0/oauth/access_token', {
+        params: {
+          grant_type:        'fb_exchange_token',
+          client_id:         process.env.FACEBOOK_APP_ID,
+          client_secret:     process.env.FACEBOOK_APP_SECRET,
+          fb_exchange_token: shortToken,
+        },
+      });
+      longToken = llRes.data.access_token || shortToken;
+    } catch (llErr) {
+      logger.warn(`FB long-lived exchange failed (will use short token): ${llErr.response?.data?.error?.message || llErr.message}`);
+    }
+
+    // 3. Get the user's FB profile
+    const userRes = await axios.get('https://graph.facebook.com/v18.0/me', {
+      params: { fields: 'id,name,picture', access_token: longToken },
+    });
+    const fbUser = userRes.data;
+    const tokenExpiry = new Date(Date.now() + 55 * 24 * 60 * 60 * 1000); // ~55 days
+
+    // 4. Save/update the personal FB account row (bookkeeping; posting happens via Pages)
     await SocialAccount.findOneAndUpdate(
       { user: userId, platform: 'facebook', platformUserId: fbUser.id },
-      { platformUsername: fbUser.name, displayName: fbUser.name, profilePicture: fbUser.picture?.data?.url, accessToken: token, isActive: true, lastSync: new Date() },
+      {
+        platformUsername: fbUser.name,
+        displayName:      fbUser.name,
+        profilePicture:   fbUser.picture?.data?.url,
+        accessToken:      longToken,
+        tokenExpiry,
+        accountType:      'personal',
+        isActive:         true,
+        lastSync:         new Date(),
+        metadata:         { source: 'facebook-login' },
+      },
       { upsert: true, new: true }
     );
-    res.redirect(`${process.env.CLIENT_URL}/accounts?connected=facebook`);
-  } catch (e) { res.redirect(`${process.env.CLIENT_URL}/accounts?error=facebook_failed`); }
+
+    // 5. Enumerate user's FB Pages — each page is its own posting target.
+    let pagesCount = 0, igCount = 0;
+    try {
+      const pagesRes = await axios.get('https://graph.facebook.com/v18.0/me/accounts', {
+        params: {
+          fields: 'id,name,access_token,picture,category,instagram_business_account{id,username,profile_picture_url}',
+          access_token: longToken,
+        },
+      });
+      const pages = pagesRes.data?.data || [];
+
+      for (const page of pages) {
+        // 5a. Save this Facebook Page (its own page-token is what you POST with)
+        await SocialAccount.findOneAndUpdate(
+          { user: userId, platform: 'facebook', platformUserId: page.id },
+          {
+            platformUsername: page.name,
+            displayName:      page.name,
+            profilePicture:   page.picture?.data?.url,
+            accessToken:      page.access_token, // page tokens don't expire if user token is long-lived
+            accountType:      'page',
+            isActive:         true,
+            lastSync:         new Date(),
+            metadata:         { category: page.category, parentUser: fbUser.id },
+          },
+          { upsert: true, new: true }
+        );
+        pagesCount++;
+
+        // 5b. If this Page has a linked IG Business account, save it as an IG row
+        if (page.instagram_business_account?.id) {
+          const ig = page.instagram_business_account;
+          await SocialAccount.findOneAndUpdate(
+            { user: userId, platform: 'instagram', platformUserId: ig.id },
+            {
+              platformUsername: ig.username,
+              displayName:      ig.username,
+              profilePicture:   ig.profile_picture_url,
+              accessToken:      page.access_token, // IG Graph API uses the linked Page's token
+              accountType:      'business',
+              isActive:         true,
+              lastSync:         new Date(),
+              metadata:         { linkedFacebookPageId: page.id, linkedFacebookPageName: page.name },
+            },
+            { upsert: true, new: true }
+          );
+          igCount++;
+        }
+      }
+      logger.info(`FB connected for user ${userId}: ${pagesCount} pages, ${igCount} IG business accounts`);
+    } catch (pagesErr) {
+      // Page enumeration failed (likely missing permission). Log and continue —
+      // the personal connection is already saved.
+      logger.warn(`FB pages enum failed: ${pagesErr.response?.data?.error?.message || pagesErr.message}`);
+    }
+
+    return res.redirect(`${process.env.CLIENT_URL}/accounts?connected=facebook&pages=${pagesCount}&ig=${igCount}`);
+
+  } catch (e) {
+    const fbErr = e.response?.data?.error;
+    const detail = fbErr?.message || fbErr?.error_user_msg || e.message;
+    logger.error(`FB callback failed for user ${userId}: ${detail}`);
+    return res.redirect(`${process.env.CLIENT_URL}/accounts?error=fb&msg=${encodeURIComponent(detail.slice(0, 200))}`);
+  }
 });
 
 // ── ADS ROUTES ──
