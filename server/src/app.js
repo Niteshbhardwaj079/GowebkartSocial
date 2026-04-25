@@ -36,14 +36,27 @@ const app = express();
 app.set('trust proxy', 1);
 app.use(helmet());
 
-// Allow multiple origins (comma-separated CLIENT_URL)
-const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:3000')
-  .split(',').map(s => s.trim()).filter(Boolean);
+// CORS — strict allowlist if CLIENT_URL is set, otherwise permissive (warn).
+// Bearer-token API (no cookies), so CORS is a hardening layer not a primary defense.
+const explicitOrigins = process.env.CLIENT_URL
+  ? process.env.CLIENT_URL.split(',').map(s => s.trim()).filter(Boolean)
+  : null;
+if (!explicitOrigins) {
+  logger.warn('⚠️  CLIENT_URL not set — CORS is permissive. Set CLIENT_URL=https://your-frontend in production.');
+}
+function isOriginAllowed(origin) {
+  if (!origin) return true;                                       // server-to-server, curl, same-origin
+  if (!explicitOrigins) return true;                              // permissive default
+  if (explicitOrigins.includes(origin)) return true;              // exact match
+  if (/^https:\/\/[a-z0-9-]+\.onrender\.com$/i.test(origin)) return true; // any Render deploy
+  if (/^http:\/\/localhost(:\d+)?$/i.test(origin)) return true;   // local dev always
+  return false;
+}
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin) return cb(null, true);              // allow same-origin/server-to-server
-    if (allowedOrigins.includes(origin)) return cb(null, true);
-    return cb(new Error(`CORS blocked: ${origin}`));
+    if (isOriginAllowed(origin)) return cb(null, true);
+    logger.warn(`CORS blocked origin: ${origin}`);
+    return cb(null, false);   // tells cors() to omit ACAO header — clean rejection, no 500
   },
   credentials: true,
 }));
