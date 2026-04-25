@@ -1,5 +1,6 @@
 const router         = require('express').Router();
-const { protect }    = require('../middleware/auth.middleware');
+const { protect, authorize } = require('../middleware/auth.middleware');
+const adminOnly      = authorize('admin', 'superadmin');
 const paymentService = require('../services/payment/payment.service');
 const expiryService  = require('../services/expiry/expiry.service');
 const emailService   = require('../services/email/email.service');
@@ -106,9 +107,9 @@ router.post('/verify', protect, async (req, res) => {
       return res.status(400).json({ success: false, message: '❌ Payment verification failed. Please contact support.' });
     }
 
-    // Payment record update karo
+    // Payment record update karo (only if it belongs to the logged-in user & not already paid)
     const payment = await Payment.findOneAndUpdate(
-      { razorpayOrderId },
+      { razorpayOrderId, user: req.user._id, status: { $ne: 'paid' } },
       {
         razorpayPaymentId,
         razorpaySignature,
@@ -119,7 +120,7 @@ router.post('/verify', protect, async (req, res) => {
     );
 
     if (!payment) {
-      return res.status(404).json({ success: false, message: 'Order not found' });
+      return res.status(404).json({ success: false, message: 'Order not found, already processed, or not yours' });
     }
 
     // ✅ Subscription activate karo
@@ -178,7 +179,7 @@ router.get('/history', protect, async (req, res) => {
 });
 
 // ── ADMIN: All payments ──
-router.get('/admin/payments', protect, async (req, res) => {
+router.get('/admin/payments', protect, adminOnly, async (req, res) => {
   try {
     const { page = 1, limit = 20 } = req.query;
     const payments = await Payment.find({ status: 'paid' })
@@ -192,14 +193,14 @@ router.get('/admin/payments', protect, async (req, res) => {
 });
 
 // ── ADMIN: Expiry Alert Settings ──
-router.get('/admin/expiry-settings', protect, async (req, res) => {
+router.get('/admin/expiry-settings', protect, adminOnly, async (req, res) => {
   try {
     const settings = await expiryService.getSettings();
     res.json({ success: true, settings });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-router.put('/admin/expiry-settings', protect, async (req, res) => {
+router.put('/admin/expiry-settings', protect, adminOnly, async (req, res) => {
   try {
     const settings = await expiryService.updateSettings(req.body, req.user._id);
     res.json({ success: true, message: '✅ Settings saved!', settings });
@@ -207,7 +208,7 @@ router.put('/admin/expiry-settings', protect, async (req, res) => {
 });
 
 // ── ADMIN: Manually trigger expiry check ──
-router.post('/admin/check-expiry', protect, async (req, res) => {
+router.post('/admin/check-expiry', protect, adminOnly, async (req, res) => {
   try {
     const count = await expiryService.checkAndSendAlerts();
     res.json({ success: true, message: `✅ Check complete — ${count} alerts sent` });
@@ -215,7 +216,7 @@ router.post('/admin/check-expiry', protect, async (req, res) => {
 });
 
 // ── ADMIN: Manual plan activate/extend ──
-router.post('/admin/activate', protect, async (req, res) => {
+router.post('/admin/activate', protect, adminOnly, async (req, res) => {
   try {
     const { userId, plan, months = 1 } = req.body;
     const sub = await expiryService.activateSubscription({

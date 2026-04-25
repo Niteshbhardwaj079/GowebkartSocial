@@ -53,7 +53,7 @@ exports.verifyOTP = async (req, res) => {
     if (new Date() > rec.expiresAt) { await OTP.deleteOne({ _id: rec._id }); return res.status(400).json({ success: false, message: 'OTP expire ho gaya' }); }
     if (rec.attempts >= 5) { await OTP.deleteOne({ _id: rec._id }); return res.status(400).json({ success: false, message: 'Bahut attempts. Naya OTP mangaein.' }); }
 
-    if (rec.otp !== otp.trim()) {
+    if (!(await rec.compareOTP(otp))) {
       rec.attempts++; await rec.save();
       return res.status(400).json({ success: false, message: `Galat OTP. ${5 - rec.attempts} attempts baaki.` });
     }

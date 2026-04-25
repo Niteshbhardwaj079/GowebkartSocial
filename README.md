@@ -2,6 +2,12 @@
 
 Complete Hootsuite/Buffer clone for Indian market.
 
+## ⚠️ Security Notes
+
+- `.env` files are gitignored — never commit them. Use `.env.example` as the template.
+- Generate a strong `JWT_SECRET` per environment. The server refuses to start in production with the default secret.
+- Rotate any credentials that have been shared in chat or seen in screenshots.
+
 ## 🚀 Quick Start
 
 ### 1. MongoDB Atlas Setup
@@ -26,15 +32,35 @@ Complete Hootsuite/Buffer clone for Indian market.
 ```bash
 # Server
 cd server
+cp .env.example .env   # phir .env mein values bharo
 npm install
-node src/seed.js    ← Ek baar chalao (Super Admin banata hai)
+node src/seed.js    # ← Ek baar chalao (Super Admin banata hai)
 npm run dev
 
 # Client (naye terminal mein)
 cd client
+cp .env.example .env
 npm install
 npm start
 ```
+
+### 6. Production deploy (Render)
+
+**Backend (`server/`):**
+- Render → New Web Service → connect repo → root: `server`
+- Build: `npm install` | Start: `npm start`
+- Environment variables (Render dashboard → Environment):
+  - `NODE_ENV=production`
+  - `JWT_SECRET=<generate fresh 64-char random>` — **must be 32+ chars**, must NOT be the default
+    - Generate: `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
+  - `MONGO_URI`, `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, Cloudinary keys, Email keys
+  - `CLIENT_URL=https://<your-frontend>.onrender.com` (comma-separate multiple origins)
+
+**Frontend (`client/`):**
+- Render → Static Site → root: `client`
+- Build: `npm install && npm run build` | Publish: `build`
+- `client/.env.production` already points to `https://gowebkartsocial.onrender.com` — edit it if your backend URL changes
+- Add a redirect rule: `/* → /index.html` (200) for React Router
 
 ### 6. Super Admin Login
 - URL: http://localhost:3000

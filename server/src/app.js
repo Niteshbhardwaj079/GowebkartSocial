@@ -7,6 +7,20 @@ const connectDB   = require('./config/db');
 const scheduler   = require('./services/scheduler/scheduler.service');
 const logger      = require('./utils/logger');
 
+// ── Startup validation ──
+const WEAK_JWT_SECRETS = [
+  'social-saas-secret-key-change-in-production-2025',
+  'your-secret-key', 'secret', 'changeme',
+];
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+  console.error('❌ JWT_SECRET missing or too short (min 32 chars). Set a strong secret in .env');
+  process.exit(1);
+}
+if (WEAK_JWT_SECRETS.includes(process.env.JWT_SECRET) && process.env.NODE_ENV === 'production') {
+  console.error('❌ JWT_SECRET is using a known/default value. Generate a fresh random secret for production.');
+  process.exit(1);
+}
+
 const { postRouter, aiRouter, uploadRouter, analyticsRouter, socialRouter, adsRouter, adminRouter } = require('./routes');
 const { apiSettingsRouter, superAdminRouter, publicPlansRouter } = require('./routes/extra.routes');
 const authRouter         = require('./routes/auth.routes');
@@ -18,8 +32,21 @@ const supportRouter      = require('./routes/support.routes');
 const paymentRouter      = require('./routes/payment.routes');
 
 const app = express();
+// Render/Heroku/etc sit behind a proxy — needed for express-rate-limit to read real IP
+app.set('trust proxy', 1);
 app.use(helmet());
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:3000', credentials: true }));
+
+// Allow multiple origins (comma-separated CLIENT_URL)
+const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:3000')
+  .split(',').map(s => s.trim()).filter(Boolean);
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true);              // allow same-origin/server-to-server
+    if (allowedOrigins.includes(origin)) return cb(null, true);
+    return cb(new Error(`CORS blocked: ${origin}`));
+  },
+  credentials: true,
+}));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan('dev'));
