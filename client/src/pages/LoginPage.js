@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { loginUser, registerUser, demoLogin } from '../store';
 import api from '../services/api';
 import { toast } from 'react-toastify';
+import PasswordInput from '../components/common/PasswordInput';
 
 function OTPInput({ value, onChange }) {
   const inputs = useRef([]);
@@ -174,7 +175,9 @@ export default function LoginPage() {
               <div className="form-group"><label className="form-label">Company (Optional)</label><input className="form-input" placeholder="My Business" value={form.companyName} onChange={set('companyName')} /></div>
             </>}
             <div className="form-group"><label className="form-label">Email Address</label><input className="form-input" type="email" placeholder="you@example.com" value={form.email} onChange={set('email')} required /></div>
-            <div className="form-group"><label className="form-label">Password</label><input className="form-input" type="password" placeholder="••••••••" value={form.password} onChange={set('password')} required />
+            <div className="form-group">
+              <label className="form-label">Password</label>
+              <PasswordInput value={form.password} onChange={set('password')} required />
               {tab==='register'&&<div style={{fontSize:11,color:'var(--muted)',marginTop:3}}>Minimum 6 characters</div>}
             </div>
             <button type="submit" className="btn btn-primary w-full btn-lg" disabled={loading}>

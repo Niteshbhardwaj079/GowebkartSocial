@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import api from '../services/api';
+import PasswordInput from '../components/common/PasswordInput';
 
 const SA = {
   getStats:     ()         => api.get('/superadmin/stats'),
@@ -50,7 +51,7 @@ function CreateAdminModal({ onSave, onClose }) {
         </div>
         <div className="form-group">
           <label className="form-label">Password</label>
-          <input className="form-input" type="password" placeholder="Strong password" value={form.password} onChange={set('password')} />
+          <PasswordInput placeholder="Strong password" value={form.password} onChange={set('password')} />
         </div>
         <div style={{ background: 'rgba(124,106,255,0.08)', border: '1px solid rgba(124,106,255,0.2)', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>
           ℹ️ Admin ko ye milega: <strong style={{ color: 'var(--text)' }}>Pro Plan + Users manage karne ka access</strong>

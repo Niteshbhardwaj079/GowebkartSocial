@@ -3,6 +3,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import { toast } from 'react-toastify';
 import api from '../services/api';
 import { updateUser } from '../store';
+import PasswordInput from '../components/common/PasswordInput';
 
 function Toggle({ value, onChange, label, desc, color = '#0066cc' }) {
   return (
@@ -209,15 +210,15 @@ export default function SettingsPage() {
           <div className="card-title mb-4">🔑 Change Password</div>
           <div className="form-group">
             <label className="form-label">Current Password</label>
-            <input className="form-input" type="password" placeholder="••••••••" value={passwords.current} onChange={setPw('current')} />
+            <PasswordInput value={passwords.current} onChange={setPw('current')} />
           </div>
           <div className="form-group">
             <label className="form-label">New Password</label>
-            <input className="form-input" type="password" placeholder="••••••••" value={passwords.newPw} onChange={setPw('newPw')} />
+            <PasswordInput value={passwords.newPw} onChange={setPw('newPw')} />
           </div>
           <div className="form-group">
             <label className="form-label">Confirm New Password</label>
-            <input className="form-input" type="password" placeholder="••••••••" value={passwords.confirm} onChange={setPw('confirm')} />
+            <PasswordInput value={passwords.confirm} onChange={setPw('confirm')} />
             {passwords.confirm && passwords.newPw !== passwords.confirm && (
               <div style={{ fontSize:12, color:'var(--danger)', marginTop:4 }}>❌ Passwords match nahi kar rahe</div>
             )}

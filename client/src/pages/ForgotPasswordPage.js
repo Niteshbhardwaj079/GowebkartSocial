@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { authAPI } from '../services/api';
 import { toast } from 'react-toastify';
+import PasswordInput from '../components/common/PasswordInput';
 
 function OTPInput({ value, onChange }) {
   const inputs = useRef([]);
@@ -125,14 +126,12 @@ export default function ForgotPasswordPage() {
 
             <div className="form-group">
               <label className="form-label">Naya Password</label>
-              <input className="form-input" type="password" placeholder="••••••••"
-                value={password} onChange={e=>setPassword(e.target.value)} required />
+              <PasswordInput value={password} onChange={e=>setPassword(e.target.value)} required />
               <div style={{fontSize:11,color:'var(--muted)',marginTop:3}}>Minimum 6 characters</div>
             </div>
             <div className="form-group">
               <label className="form-label">Confirm Password</label>
-              <input className="form-input" type="password" placeholder="••••••••"
-                value={confirm} onChange={e=>setConfirm(e.target.value)} required />
+              <PasswordInput value={confirm} onChange={e=>setConfirm(e.target.value)} required />
             </div>
 
             <button type="submit" className="btn btn-primary w-full btn-lg"
