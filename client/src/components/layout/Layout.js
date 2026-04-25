@@ -46,11 +46,14 @@ const dropdownItemStyle = {
   transition:'background 0.1s',
 };
 
-// Collapsible group inside the sidebar nav
+// Collapsible group inside the sidebar nav.
+// Default closed — parent still shows an active highlight when a child
+// route is current, but the panel does not auto-expand. The panel is
+// always mounted with a max-height transition so opening/closing is
+// smooth, not a jerky mount/unmount.
 function NavGroup({ item, currentPath }) {
   const isAnyChildActive = item.children.some(c => currentPath === c.to);
-  const [open, setOpen] = useState(isAnyChildActive);
-  useEffect(() => { if (isAnyChildActive) setOpen(true); }, [isAnyChildActive]);
+  const [open, setOpen] = useState(false);
 
   return (
     <>
@@ -62,25 +65,33 @@ function NavGroup({ item, currentPath }) {
       >
         <span className="nav-icon">{item.icon}</span>
         <span className="nav-label">{item.label}</span>
-        <span style={{ marginLeft:'auto', fontSize:9, opacity:0.6, transform: open ? 'rotate(180deg)' : 'rotate(0)', transition:'transform 0.2s' }}>▼</span>
+        <span style={{ marginLeft:'auto', fontSize:9, opacity:0.6, transform: open ? 'rotate(180deg)' : 'rotate(0)', transition:'transform 0.25s ease' }}>▼</span>
       </button>
-      {open && (
-        <div style={{ paddingLeft:18, marginTop:2, marginBottom:4, borderLeft:'1px solid rgba(255,255,255,0.08)', marginLeft:18 }}>
-          {item.children.map(child => (
-            <NavLink
-              key={child.to}
-              to={child.to}
-              className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
-              style={{ fontSize:12, padding:'7px 10px', marginLeft:0 }}
-            >
-              <span className="nav-icon" style={{ fontSize:13 }}>{child.icon}</span>
-              <span className="nav-label">{child.label}</span>
-              {child.dot && <span style={{ marginLeft:'auto', width:7, height:7, borderRadius:'50%', background:'#0099ff' }} />}
-              {child.badge && <span className="nav-badge">{child.badge}</span>}
-            </NavLink>
-          ))}
-        </div>
-      )}
+      <div
+        style={{
+          overflow: 'hidden',
+          maxHeight: open ? `${item.children.length * 44}px` : '0px',
+          opacity:   open ? 1 : 0,
+          transition: 'max-height 0.28s ease, opacity 0.2s ease',
+          marginLeft: 18,
+          paddingLeft: 8,
+          borderLeft: open ? '1px solid rgba(255,255,255,0.08)' : '1px solid transparent',
+        }}
+      >
+        {item.children.map(child => (
+          <NavLink
+            key={child.to}
+            to={child.to}
+            className={({ isActive }) => `nav-item${isActive ? ' active' : ''}`}
+            style={{ fontSize:12, padding:'7px 10px', marginLeft:0 }}
+          >
+            <span className="nav-icon" style={{ fontSize:13 }}>{child.icon}</span>
+            <span className="nav-label">{child.label}</span>
+            {child.dot && <span style={{ marginLeft:'auto', width:7, height:7, borderRadius:'50%', background:'#0099ff' }} />}
+            {child.badge && <span className="nav-badge">{child.badge}</span>}
+          </NavLink>
+        ))}
+      </div>
     </>
   );
 }
