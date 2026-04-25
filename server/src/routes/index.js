@@ -213,15 +213,42 @@ socialRouter.get('/twitter/connect', protect, (req, res) => {
   res.json({ url: `https://twitter.com/i/oauth2/authorize?${params}` });
 });
 
-socialRouter.get('/linkedin/connect', protect, (req, res) => {
-  if (!process.env.LINKEDIN_CLIENT_ID || process.env.LINKEDIN_CLIENT_ID === 'baad_mein') {
-    return res.status(400).json({ success: false, message: 'LinkedIn API keys add karein' });
+// Resolve LinkedIn app creds — per-user (API Settings) preferred, env fallback
+async function resolveLinkedInCreds(userId) {
+  try {
+    const UserApiSettings = require('../models/UserApiSettings.model');
+    const us = await UserApiSettings.findOne({ user: userId })
+      .select('+linkedin.clientId +linkedin.clientSecret');
+    if (us?.linkedin?.clientId && us?.linkedin?.clientSecret) {
+      return { clientId: us.linkedin.clientId, clientSecret: us.linkedin.clientSecret, source: 'user' };
+    }
+  } catch {}
+  if (process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_ID !== 'baad_mein' &&
+      process.env.LINKEDIN_CLIENT_SECRET) {
+    return { clientId: process.env.LINKEDIN_CLIENT_ID, clientSecret: process.env.LINKEDIN_CLIENT_SECRET, source: 'env' };
+  }
+  return null;
+}
+
+socialRouter.get('/linkedin/connect', protect, async (req, res) => {
+  const creds = await resolveLinkedInCreds(req.user._id);
+  if (!creds) {
+    return res.status(400).json({
+      success: false,
+      message: 'LinkedIn keys missing. API Settings me Client ID/Secret save karein, ya Render env me LINKEDIN_CLIENT_ID/LINKEDIN_CLIENT_SECRET set karein.',
+    });
+  }
+  if (!process.env.SERVER_URL) {
+    return res.status(500).json({ success: false, message: 'SERVER_URL env var missing' });
   }
   const params = new URLSearchParams({
-    response_type: 'code', client_id: process.env.LINKEDIN_CLIENT_ID,
-    redirect_uri: `${process.env.SERVER_URL}/api/social/callback/linkedin`,
-    scope: 'r_liteprofile r_emailaddress w_member_social',
-    state: req.user._id.toString()
+    response_type: 'code',
+    client_id:     creds.clientId,
+    redirect_uri:  `${process.env.SERVER_URL}/api/social/callback/linkedin`,
+    // openid + profile + email work with the modern "Sign In with LinkedIn using OpenID Connect" product.
+    // w_member_social = post on behalf of the member (Share on LinkedIn product).
+    scope:         'openid profile email w_member_social',
+    state:         req.user._id.toString(),
   });
   res.json({ url: `https://www.linkedin.com/oauth/v2/authorization?${params}` });
 });
@@ -367,6 +394,78 @@ socialRouter.get('/callback/facebook', async (req, res) => {
     const detail = fbErr?.message || fbErr?.error_user_msg || e.message;
     logger.error(`FB callback failed for user ${userId}: ${detail}`);
     return res.redirect(`${process.env.CLIENT_URL}/accounts?error=fb&msg=${encodeURIComponent(detail.slice(0, 200))}`);
+  }
+});
+
+// LinkedIn OAuth callback — was completely missing before, so every Connect
+// LinkedIn click ended in a 404 and no SocialAccount was ever written.
+socialRouter.get('/callback/linkedin', async (req, res) => {
+  const logger = require('../utils/logger');
+  const { code, state: userId, error, error_description } = req.query;
+
+  if (error) {
+    logger.warn(`LinkedIn OAuth user-side error: ${error} — ${error_description}`);
+    return res.redirect(`${process.env.CLIENT_URL}/accounts?error=linkedin&msg=${encodeURIComponent(error_description || error)}`);
+  }
+  if (!code || !userId) {
+    return res.redirect(`${process.env.CLIENT_URL}/accounts?error=linkedin&msg=${encodeURIComponent('Missing code or state')}`);
+  }
+
+  try {
+    const creds = await resolveLinkedInCreds(userId);
+    if (!creds) {
+      return res.redirect(`${process.env.CLIENT_URL}/accounts?error=linkedin&msg=${encodeURIComponent('LinkedIn app credentials missing on server')}`);
+    }
+    logger.info(`LinkedIn callback using ${creds.source} keys for user ${userId}`);
+
+    // 1. Exchange code → access token (POST form-urlencoded)
+    const params = new URLSearchParams({
+      grant_type:    'authorization_code',
+      code,
+      redirect_uri:  `${process.env.SERVER_URL}/api/social/callback/linkedin`,
+      client_id:     creds.clientId,
+      client_secret: creds.clientSecret,
+    });
+    const tokenRes = await axios.post('https://www.linkedin.com/oauth/v2/accessToken', params.toString(), {
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    });
+    const accessToken = tokenRes.data.access_token;
+    const expiresIn   = tokenRes.data.expires_in || 60 * 24 * 60 * 60;  // default 60 days
+    const tokenExpiry = new Date(Date.now() + expiresIn * 1000);
+
+    // 2. Fetch profile via OpenID Connect /userinfo (works with 'openid profile email' scopes).
+    //    The legacy /v2/me requires r_liteprofile which LinkedIn restricts to approved partners.
+    const userRes = await axios.get('https://api.linkedin.com/v2/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const li = userRes.data;  // { sub, name, email, picture, ... }
+
+    await SocialAccount.findOneAndUpdate(
+      { user: userId, platform: 'linkedin', platformUserId: li.sub },
+      {
+        platformUsername: li.name || li.email,
+        displayName:      li.name || li.email,
+        profilePicture:   li.picture,
+        accessToken,
+        tokenExpiry,
+        accountType:      'personal',
+        isActive:         true,
+        lastSync:         new Date(),
+        metadata:         { email: li.email },
+      },
+      { upsert: true, new: true }
+    );
+
+    logger.info(`LinkedIn connected for user ${userId}: ${li.name || li.email}`);
+    return res.redirect(`${process.env.CLIENT_URL}/accounts?connected=linkedin`);
+
+  } catch (e) {
+    const detail = e.response?.data?.error_description
+      || e.response?.data?.message
+      || e.response?.data?.error
+      || e.message;
+    logger.error(`LinkedIn callback failed for user ${userId}: ${detail}`);
+    return res.redirect(`${process.env.CLIENT_URL}/accounts?error=linkedin&msg=${encodeURIComponent(String(detail).slice(0, 200))}`);
   }
 });
 
