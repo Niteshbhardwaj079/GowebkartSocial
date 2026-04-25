@@ -25,6 +25,10 @@ const UserSchema = new mongoose.Schema({
   resetPasswordToken:  String,
   resetPasswordExpire: Date,
   isDemo: { type: Boolean, default: false },
+  // Activity tracking — set on login (exact) and on any authenticated request
+  // (throttled to ~5 min/user to avoid DB load).
+  lastLoginAt:  { type: Date },
+  lastActiveAt: { type: Date },
   // Per-admin capability flags. Only meaningful when role==='admin'.
   // SuperAdmin always implicitly has all true; regular users always implicitly false.
   permissions: {

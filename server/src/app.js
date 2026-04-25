@@ -31,6 +31,7 @@ const storageRouter      = require('./routes/storage.routes');
 const supportRouter      = require('./routes/support.routes');
 const paymentRouter      = require('./routes/payment.routes');
 const auditRouter        = require('./routes/audit.routes');
+const trackActivity      = require('./middleware/trackActivity.middleware');
 
 const app = express();
 // Render/Heroku/etc sit behind a proxy — needed for express-rate-limit to read real IP
@@ -64,6 +65,10 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(morgan('dev'));
+
+// Track lastActiveAt on every API request (after protect populates req.user).
+// trackActivity itself is throttled per-user — see middleware for details.
+app.use('/api', trackActivity);
 
 app.use('/api/auth',          authRouter);
 app.use('/api/posts',         postRouter);

@@ -72,6 +72,30 @@ export default function AdminPage() {
     );
   };
 
+  const ActivityStatus = ({ user }) => {
+    const last = user.lastActiveAt || user.lastLoginAt;
+    if (!last) {
+      return (
+        <div style={{ fontSize:11 }}>
+          <div style={{ fontWeight:700, color:'var(--muted)' }}>⚪ Never</div>
+        </div>
+      );
+    }
+    const days = Math.floor((Date.now() - new Date(last).getTime()) / 86400000);
+    const hours = Math.floor((Date.now() - new Date(last).getTime()) / 3600000);
+    let color, status, label;
+    if (hours < 24)      { color = '#10b981'; status = '🟢'; label = hours < 1 ? 'Just now' : `${hours}h ago`; }
+    else if (days < 7)   { color = '#10b981'; status = '🟢'; label = `${days}d ago`; }
+    else if (days < 30)  { color = '#dd8800'; status = '🟡'; label = `${days}d ago`; }
+    else if (days < 90)  { color = '#e53e3e'; status = '🔴'; label = `${days}d ago`; }
+    else                 { color = '#7a7a9a'; status = '⚫'; label = `${days}d dormant`; }
+    return (
+      <div style={{ fontSize:11 }} title={`Last active: ${new Date(last).toLocaleString('en-IN')}`}>
+        <div style={{ fontWeight:700, color }}>{status} {label}</div>
+      </div>
+    );
+  };
+
   return (
     <div className="page fade-in">
       <div className="page-header">
@@ -105,7 +129,7 @@ export default function AdminPage() {
         ) : (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Plan</th><th>Activity</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead>
+              <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Plan</th><th>Activity</th><th>Last Seen</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead>
               <tbody>
                 {filtered.map(u => (
                   <tr key={u._id} style={{ opacity: u.isActive ? 1 : 0.5 }}>
@@ -129,6 +153,7 @@ export default function AdminPage() {
                       )}
                     </td>
                     <td><StatsCell s={u.postStats} /></td>
+                    <td><ActivityStatus user={u} /></td>
                     <td>
                       <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:20, background:u.isActive?'#e8fff5':'#fff0f0', color:u.isActive?'#00b86b':'#e53e3e', border:`1px solid ${u.isActive?'#b3f0d8':'#ffcccc'}` }}>
                         {u.isActive ? 'Active' : 'Inactive'}

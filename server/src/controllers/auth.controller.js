@@ -125,6 +125,8 @@ exports.login = async (req, res) => {
 
     const token = generateToken(user._id);
     logger.info(`Login: ${email}`);
+    // Track exact login time (separate from last-activity heartbeat)
+    User.updateOne({ _id: user._id }, { $set: { lastLoginAt: new Date(), lastActiveAt: new Date() } }).catch(() => {});
     audit.log({
       req,
       actor: { userId: user._id, name: user.name, email: user.email, role: user.role },

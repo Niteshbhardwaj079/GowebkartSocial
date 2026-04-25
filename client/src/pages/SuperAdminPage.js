@@ -210,6 +210,7 @@ export default function SuperAdminPage() {
   const [loading, setLoading] = useState(true);
   const [search,  setSearch]  = useState('');
   const [planFilter, setPlanFilter] = useState('');
+  const [dormancyFilter, setDormancyFilter] = useState(''); // '' | '7' | '30' | '90'
   const [showCreateAdmin, setShowCreateAdmin] = useState(false);
   const [showPlanModal,   setShowPlanModal]   = useState(false);
   const [editPlan,        setEditPlan]        = useState(null);
@@ -323,6 +324,32 @@ export default function SuperAdminPage() {
     return (n / 10000000).toFixed(1) + 'Cr';
   };
 
+  const ActivityStatus = ({ user }) => {
+    const last = user.lastActiveAt || user.lastLoginAt;
+    if (!last) {
+      return (
+        <div style={{ fontSize:11 }}>
+          <div style={{ fontWeight:700, color:'var(--muted)' }}>⚪ Never</div>
+          <div style={{ fontSize:10, color:'var(--muted)' }}>Joined {new Date(user.createdAt).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'2-digit' })}</div>
+        </div>
+      );
+    }
+    const days = Math.floor((Date.now() - new Date(last).getTime()) / 86400000);
+    const hours = Math.floor((Date.now() - new Date(last).getTime()) / 3600000);
+    let color, status, label;
+    if (hours < 24)      { color = '#10b981'; status = '🟢'; label = hours < 1 ? 'Just now' : `${hours}h ago`; }
+    else if (days < 7)   { color = '#10b981'; status = '🟢'; label = `${days}d ago`; }
+    else if (days < 30)  { color = '#dd8800'; status = '🟡'; label = `${days}d ago`; }
+    else if (days < 90)  { color = '#e53e3e'; status = '🔴'; label = `${days}d ago`; }
+    else                 { color = '#7a7a9a'; status = '⚫'; label = `${days}d dormant`; }
+    return (
+      <div style={{ fontSize:11 }} title={`Last active: ${new Date(last).toLocaleString('en-IN')}`}>
+        <div style={{ fontWeight:700, color }}>{status} {label}</div>
+        <div style={{ fontSize:10, color:'var(--muted)' }}>Joined {new Date(user.createdAt).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'2-digit' })}</div>
+      </div>
+    );
+  };
+
   const StatsCell = ({ s }) => {
     if (!s) return <span style={{ color:'var(--muted)', fontSize:12 }}>—</span>;
     return (
@@ -424,14 +451,33 @@ export default function SuperAdminPage() {
                 <option value="basic">Basic</option>
                 <option value="pro">Pro</option>
               </select>
+              <select className="form-select" style={{ width: 'auto' }} value={dormancyFilter} onChange={e => setDormancyFilter(e.target.value)}>
+                <option value="">All Activity</option>
+                <option value="active">🟢 Active (&lt;7d)</option>
+                <option value="7">🟡 Idle (7-30d)</option>
+                <option value="30">🔴 Dormant (30-90d)</option>
+                <option value="90">⚫ Dead (&gt;90d)</option>
+                <option value="never">⚪ Never logged in</option>
+              </select>
               <button className="btn btn-secondary" onClick={loadData}>🔍 Search</button>
             </div>
             <div className="card">
               <div className="table-wrap">
                 <table>
-                  <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Plan</th><th>Activity</th><th>Status</th><th>Actions</th></tr></thead>
+                  <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Plan</th><th>Activity</th><th>Last Seen</th><th>Status</th><th>Actions</th></tr></thead>
                   <tbody>
-                    {users.map(u => (
+                    {users.filter(u => {
+                      if (!dormancyFilter) return true;
+                      const last = u.lastActiveAt || u.lastLoginAt;
+                      if (dormancyFilter === 'never') return !last;
+                      if (!last) return false;
+                      const days = Math.floor((Date.now() - new Date(last).getTime()) / 86400000);
+                      if (dormancyFilter === 'active') return days < 7;
+                      if (dormancyFilter === '7')      return days >= 7  && days < 30;
+                      if (dormancyFilter === '30')     return days >= 30 && days < 90;
+                      if (dormancyFilter === '90')     return days >= 90;
+                      return true;
+                    }).map(u => (
                       <tr key={u._id}>
                         <td style={{ fontWeight: 600 }}>{u.name}</td>
                         <td style={{ fontSize: 12, color: 'var(--muted)' }}>{u.email}</td>
@@ -444,6 +490,7 @@ export default function SuperAdminPage() {
                           </select>
                         </td>
                         <td><StatsCell s={u.postStats} /></td>
+                        <td><ActivityStatus user={u} /></td>
                         <td>
                           <span style={{ fontSize: 12, fontWeight: 600, color: u.isActive ? 'var(--success)' : 'var(--danger)' }}>
                             {u.isActive ? '✅ Active' : '❌ Inactive'}
@@ -505,7 +552,7 @@ export default function SuperAdminPage() {
             <div className="card">
               <div className="table-wrap">
                 <table>
-                  <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Company</th><th>Clients</th><th>Client Activity</th><th>Status</th><th>Actions</th></tr></thead>
+                  <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Company</th><th>Clients</th><th>Client Activity</th><th>Last Seen</th><th>Status</th><th>Actions</th></tr></thead>
                   <tbody>
                     {admins.map(a => (
                       <tr key={a._id}>
@@ -515,6 +562,7 @@ export default function SuperAdminPage() {
                         <td style={{ fontSize: 12, color: 'var(--muted)' }}>{a.company?.name || '—'}</td>
                         <td style={{ fontWeight: 700, color: 'var(--accent)' }}>👥 {a.clientCount || 0}</td>
                         <td><StatsCell s={a.clientPostStats} /></td>
+                        <td><ActivityStatus user={a} /></td>
                         <td>
                           <span style={{ fontSize: 12, fontWeight: 600, color: a.isActive ? 'var(--success)' : 'var(--danger)' }}>
                             {a.isActive ? '✅ Active' : '❌ Inactive'}
