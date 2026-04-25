@@ -31,6 +31,27 @@ export default function AdminPage() {
     toast.success(active ? 'Account activated' : 'Account deactivated');
   };
 
+  const fmt = (n) => {
+    if (!n || n < 1000) return Number(n || 0).toLocaleString('en-IN');
+    if (n < 100000)  return (n / 1000).toFixed(n < 10000 ? 1 : 0) + 'K';
+    if (n < 10000000) return (n / 100000).toFixed(1) + 'L';
+    return (n / 10000000).toFixed(1) + 'Cr';
+  };
+
+  const StatsCell = ({ s }) => {
+    if (!s) return <span style={{ color:'var(--muted)', fontSize:12 }}>—</span>;
+    return (
+      <div style={{ fontSize:11, lineHeight:1.5 }}>
+        <div title={`Published: ${s.publishedPosts} | Scheduled: ${s.scheduledPosts} | Failed: ${s.failedPosts}`}>
+          📝 <strong>{fmt(s.totalPosts)}</strong> <span style={{ color:'var(--muted)' }}>({s.publishedPosts} published)</span>
+        </div>
+        <div title={`Likes: ${s.likes} | Comments: ${s.comments} | Shares: ${s.shares}`} style={{ color:'var(--muted)' }}>
+          ❤️ {fmt(s.engagement)} engage &nbsp; 👁 {fmt(s.reach)} reach
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="page fade-in">
       <div className="page-header">
@@ -50,7 +71,7 @@ export default function AdminPage() {
         ) : (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Plan</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead>
+              <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Plan</th><th>Activity</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead>
               <tbody>
                 {filtered.map(u => (
                   <tr key={u._id} style={{ opacity: u.isActive ? 1 : 0.5 }}>
@@ -73,6 +94,7 @@ export default function AdminPage() {
                         <span style={{ fontSize:12, fontWeight:700, textTransform:'capitalize' }}>{u.plan}</span>
                       )}
                     </td>
+                    <td><StatsCell s={u.postStats} /></td>
                     <td>
                       <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:20, background:u.isActive?'#e8fff5':'#fff0f0', color:u.isActive?'#00b86b':'#e53e3e', border:`1px solid ${u.isActive?'#b3f0d8':'#ffcccc'}` }}>
                         {u.isActive ? 'Active' : 'Inactive'}

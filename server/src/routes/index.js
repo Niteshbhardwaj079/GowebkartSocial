@@ -250,7 +250,34 @@ adsRouter.post('/campaigns/:id/pause', protect, requirePlan('basic','pro'), asyn
 const adminRouter = express.Router();
 adminRouter.get('/users', protect, authorize('admin','superadmin'), async (req, res) => {
   try {
-    const users = await User.find({ company: req.user.company?._id }).select('-password').sort({ createdAt: -1 });
+    const users = await User.find({ company: req.user.company?._id }).select('-password').sort({ createdAt: -1 }).lean();
+
+    // Aggregate post stats per user (same shape as superAdmin)
+    const userIds = users.map(u => u._id);
+    const rows = userIds.length ? await Post.aggregate([
+      { $match: { user: { $in: userIds } } },
+      { $group: {
+        _id: '$user',
+        totalPosts:     { $sum: 1 },
+        publishedPosts: { $sum: { $cond: [{ $eq: ['$status', 'published'] }, 1, 0] } },
+        scheduledPosts: { $sum: { $cond: [{ $eq: ['$status', 'scheduled'] }, 1, 0] } },
+        failedPosts:    { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } },
+        likes:          { $sum: { $ifNull: ['$engagement.likes',    0] } },
+        comments:       { $sum: { $ifNull: ['$engagement.comments', 0] } },
+        shares:         { $sum: { $ifNull: ['$engagement.shares',   0] } },
+        reach:          { $sum: { $ifNull: ['$engagement.reach',    0] } },
+      }}
+    ]) : [];
+    const map = new Map(rows.map(r => [String(r._id), r]));
+    users.forEach(u => {
+      const s = map.get(String(u._id));
+      u.postStats = s
+        ? { totalPosts:s.totalPosts, publishedPosts:s.publishedPosts, scheduledPosts:s.scheduledPosts, failedPosts:s.failedPosts,
+            likes:s.likes, comments:s.comments, shares:s.shares, reach:s.reach,
+            engagement: s.likes + s.comments + s.shares }
+        : { totalPosts:0, publishedPosts:0, scheduledPosts:0, failedPosts:0, likes:0, comments:0, shares:0, reach:0, engagement:0 };
+    });
+
     res.json({ success: true, users });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });

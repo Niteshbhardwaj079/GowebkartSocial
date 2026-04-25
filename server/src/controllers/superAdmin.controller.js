@@ -2,25 +2,79 @@ const { User, Company, Post } = require('../models');
 const Plan = require('../models/Plan.model');
 const logger = require('../utils/logger');
 
+// Aggregate post + engagement stats per user. Returns Map<userId, stats>.
+async function getPostStatsByUser(userIds) {
+  if (!userIds?.length) return new Map();
+  const rows = await Post.aggregate([
+    { $match: { user: { $in: userIds } } },
+    { $group: {
+      _id: '$user',
+      totalPosts:     { $sum: 1 },
+      publishedPosts: { $sum: { $cond: [{ $eq: ['$status', 'published'] }, 1, 0] } },
+      scheduledPosts: { $sum: { $cond: [{ $eq: ['$status', 'scheduled'] }, 1, 0] } },
+      failedPosts:    { $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] } },
+      likes:          { $sum: { $ifNull: ['$engagement.likes',       0] } },
+      comments:       { $sum: { $ifNull: ['$engagement.comments',    0] } },
+      shares:         { $sum: { $ifNull: ['$engagement.shares',      0] } },
+      reach:          { $sum: { $ifNull: ['$engagement.reach',       0] } },
+      impressions:    { $sum: { $ifNull: ['$engagement.impressions', 0] } },
+    }}
+  ]);
+  const map = new Map();
+  for (const r of rows) {
+    map.set(String(r._id), {
+      totalPosts: r.totalPosts, publishedPosts: r.publishedPosts,
+      scheduledPosts: r.scheduledPosts, failedPosts: r.failedPosts,
+      likes: r.likes, comments: r.comments, shares: r.shares,
+      reach: r.reach, impressions: r.impressions,
+      engagement: r.likes + r.comments + r.shares,
+    });
+  }
+  return map;
+}
+
+const EMPTY_STATS = { totalPosts:0, publishedPosts:0, scheduledPosts:0, failedPosts:0, likes:0, comments:0, shares:0, reach:0, impressions:0, engagement:0 };
+
 // ✅ GET - Super Admin Dashboard Stats
 exports.getSuperAdminStats = async (req, res) => {
   try {
-    const [totalUsers, totalPosts, planCounts] = await Promise.all([
+    const [totalUsers, totalPosts, planCounts, totalsAgg] = await Promise.all([
       User.countDocuments({ isDemo: { $ne: true } }),
       Post.countDocuments(),
       User.aggregate([
         { $group: { _id: '$plan', count: { $sum: 1 } } }
-      ])
+      ]),
+      Post.aggregate([
+        { $group: {
+          _id: null,
+          likes:    { $sum: { $ifNull: ['$engagement.likes',    0] } },
+          comments: { $sum: { $ifNull: ['$engagement.comments', 0] } },
+          shares:   { $sum: { $ifNull: ['$engagement.shares',   0] } },
+          reach:    { $sum: { $ifNull: ['$engagement.reach',    0] } },
+          published:{ $sum: { $cond: [{ $eq: ['$status', 'published'] }, 1, 0] } },
+        }}
+      ]),
     ]);
+    const totals = totalsAgg[0] || { likes:0, comments:0, shares:0, reach:0, published:0 };
 
     const recentUsers = await User.find({ isDemo: { $ne: true } })
       .sort({ createdAt: -1 })
       .limit(10)
-      .select('name email plan role createdAt isActive');
+      .select('name email plan role createdAt isActive')
+      .lean();
+
+    const statsMap = await getPostStatsByUser(recentUsers.map(u => u._id));
+    recentUsers.forEach(u => { u.postStats = statsMap.get(String(u._id)) || EMPTY_STATS; });
 
     res.json({
       success: true,
-      stats: { totalUsers, totalPosts },
+      stats: {
+        totalUsers,
+        totalPosts,
+        publishedPosts: totals.published,
+        totalEngagement: totals.likes + totals.comments + totals.shares,
+        totalReach: totals.reach,
+      },
       planCounts,
       recentUsers
     });
@@ -45,7 +99,11 @@ exports.getAllUsers = async (req, res) => {
       .limit(Number(limit))
       .skip((Number(page) - 1) * Number(limit))
       .select('-password')
-      .populate('company', 'name');
+      .populate('company', 'name')
+      .lean();
+
+    const statsMap = await getPostStatsByUser(users.map(u => u._id));
+    users.forEach(u => { u.postStats = statsMap.get(String(u._id)) || EMPTY_STATS; });
 
     const total = await User.countDocuments(filter);
 
@@ -238,11 +296,51 @@ exports.demoteToUser = async (req, res) => {
   }
 };
 
-// ✅ GET All Admins
+// ✅ GET All Admins (with their own stats + clients-managed counts)
 exports.getAllAdmins = async (req, res) => {
   try {
     const admins = await User.find({ role: { $in: ['admin', 'superadmin'] } })
-      .select('-password').populate('company', 'name').sort({ createdAt: -1 });
+      .select('-password').populate('company', 'name').sort({ createdAt: -1 }).lean();
+
+    const adminIds = admins.map(a => a._id);
+    const companyIds = admins.map(a => a.company?._id).filter(Boolean);
+
+    // Each admin's own posts
+    const adminStatsMap = await getPostStatsByUser(adminIds);
+
+    // For each admin's company: how many client users + their aggregate post stats
+    const clientAgg = await User.aggregate([
+      { $match: { company: { $in: companyIds }, role: 'user' } },
+      { $group: { _id: '$company', clients: { $sum: 1 }, userIds: { $push: '$_id' } } },
+    ]);
+    const clientsByCompany = new Map();
+    for (const row of clientAgg) clientsByCompany.set(String(row._id), row);
+
+    // Aggregate posts of all client-users (one query, then split by company)
+    const allClientUserIds = clientAgg.flatMap(r => r.userIds);
+    const clientPostStats = await getPostStatsByUser(allClientUserIds);
+
+    admins.forEach(a => {
+      a.postStats = adminStatsMap.get(String(a._id)) || EMPTY_STATS;
+      const cb = clientsByCompany.get(String(a.company?._id));
+      a.clientCount = cb?.clients || 0;
+      // Sum client stats for this admin's company
+      const sum = { ...EMPTY_STATS };
+      (cb?.userIds || []).forEach(uid => {
+        const s = clientPostStats.get(String(uid));
+        if (!s) return;
+        sum.totalPosts     += s.totalPosts;
+        sum.publishedPosts += s.publishedPosts;
+        sum.scheduledPosts += s.scheduledPosts;
+        sum.likes          += s.likes;
+        sum.comments       += s.comments;
+        sum.shares         += s.shares;
+        sum.reach          += s.reach;
+        sum.engagement     += s.engagement;
+      });
+      a.clientPostStats = sum;
+    });
+
     res.json({ success: true, admins });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

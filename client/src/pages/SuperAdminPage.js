@@ -243,6 +243,27 @@ export default function SuperAdminPage() {
     }}>{plan}</span>
   );
 
+  const fmt = (n) => {
+    if (!n || n < 1000) return Number(n || 0).toLocaleString('en-IN');
+    if (n < 100000)  return (n / 1000).toFixed(n < 10000 ? 1 : 0) + 'K';
+    if (n < 10000000) return (n / 100000).toFixed(1) + 'L';
+    return (n / 10000000).toFixed(1) + 'Cr';
+  };
+
+  const StatsCell = ({ s }) => {
+    if (!s) return <span style={{ color:'var(--muted)', fontSize:12 }}>—</span>;
+    return (
+      <div style={{ fontSize:11, lineHeight:1.5 }}>
+        <div title={`Published: ${s.publishedPosts} | Scheduled: ${s.scheduledPosts} | Failed: ${s.failedPosts}`}>
+          📝 <strong>{fmt(s.totalPosts)}</strong> <span style={{ color:'var(--muted)' }}>({s.publishedPosts} published)</span>
+        </div>
+        <div title={`Likes: ${s.likes} | Comments: ${s.comments} | Shares: ${s.shares}`} style={{ color:'var(--muted)' }}>
+          ❤️ {fmt(s.engagement)} engage &nbsp; 👁 {fmt(s.reach)} reach
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="page fade-in">
       <div className="page-header flex justify-between items-center">
@@ -271,15 +292,29 @@ export default function SuperAdminPage() {
           <div>
             <div className="grid grid-4 mb-4">
               {[
-                { label: 'Total Users',  value: stats.stats?.totalUsers,  icon: '👥', color: 'purple' },
-                { label: 'Total Posts',  value: stats.stats?.totalPosts,  icon: '📝', color: 'pink'   },
-                { label: 'Free Users',   value: stats.planCounts?.find(p => p._id === 'free')?.count  || 0, icon: '🆓', color: 'green'  },
-                { label: 'Paid Users',   value: (stats.planCounts?.find(p => p._id === 'basic')?.count || 0) + (stats.planCounts?.find(p => p._id === 'pro')?.count || 0), icon: '💰', color: 'orange' },
+                { label: 'Total Users',     value: stats.stats?.totalUsers,        icon: '👥', color: 'purple' },
+                { label: 'Total Posts',     value: stats.stats?.totalPosts,        icon: '📝', color: 'pink'   },
+                { label: 'Published',       value: stats.stats?.publishedPosts,    icon: '✅', color: 'green'  },
+                { label: 'Paid Users',      value: (stats.planCounts?.find(p => p._id === 'basic')?.count || 0) + (stats.planCounts?.find(p => p._id === 'pro')?.count || 0), icon: '💰', color: 'orange' },
               ].map((s, i) => (
                 <div key={i} className={`stat-card ${s.color}`}>
                   <div className={`stat-icon ${s.color}`}>{s.icon}</div>
-                  <div className="stat-value">{s.value || 0}</div>
+                  <div className="stat-value">{fmt(s.value || 0)}</div>
                   <div className="stat-label">{s.label}</div>
+                </div>
+              ))}
+            </div>
+            <div className="grid grid-3 mb-4">
+              {[
+                { label: 'Total Engagement', value: stats.stats?.totalEngagement, icon: '❤️', color: 'pink', sub: 'Likes + Comments + Shares' },
+                { label: 'Total Reach',      value: stats.stats?.totalReach,      icon: '👁',  color: 'purple', sub: 'Unique viewers' },
+                { label: 'Free Users',       value: stats.planCounts?.find(p => p._id === 'free')?.count || 0, icon: '🆓', color: 'green', sub: 'Not yet upgraded' },
+              ].map((s, i) => (
+                <div key={i} className={`stat-card ${s.color}`}>
+                  <div className={`stat-icon ${s.color}`}>{s.icon}</div>
+                  <div className="stat-value">{fmt(s.value || 0)}</div>
+                  <div className="stat-label">{s.label}</div>
+                  <div style={{ fontSize:11, color:'var(--muted)', marginTop:4 }}>{s.sub}</div>
                 </div>
               ))}
             </div>
@@ -321,7 +356,7 @@ export default function SuperAdminPage() {
             <div className="card">
               <div className="table-wrap">
                 <table>
-                  <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Plan</th><th>Status</th><th>Actions</th></tr></thead>
+                  <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Plan</th><th>Activity</th><th>Status</th><th>Actions</th></tr></thead>
                   <tbody>
                     {users.map(u => (
                       <tr key={u._id}>
@@ -335,6 +370,7 @@ export default function SuperAdminPage() {
                             <option value="pro">Pro</option>
                           </select>
                         </td>
+                        <td><StatsCell s={u.postStats} /></td>
                         <td>
                           <span style={{ fontSize: 12, fontWeight: 600, color: u.isActive ? 'var(--success)' : 'var(--danger)' }}>
                             {u.isActive ? '✅ Active' : '❌ Inactive'}
@@ -391,7 +427,7 @@ export default function SuperAdminPage() {
             <div className="card">
               <div className="table-wrap">
                 <table>
-                  <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Company</th><th>Status</th><th>Actions</th></tr></thead>
+                  <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Company</th><th>Clients</th><th>Client Activity</th><th>Status</th><th>Actions</th></tr></thead>
                   <tbody>
                     {admins.map(a => (
                       <tr key={a._id}>
@@ -399,6 +435,8 @@ export default function SuperAdminPage() {
                         <td style={{ fontSize: 12, color: 'var(--muted)' }}>{a.email}</td>
                         <td><RoleBadge role={a.role} /></td>
                         <td style={{ fontSize: 12, color: 'var(--muted)' }}>{a.company?.name || '—'}</td>
+                        <td style={{ fontWeight: 700, color: 'var(--accent)' }}>👥 {a.clientCount || 0}</td>
+                        <td><StatsCell s={a.clientPostStats} /></td>
                         <td>
                           <span style={{ fontSize: 12, fontWeight: 600, color: a.isActive ? 'var(--success)' : 'var(--danger)' }}>
                             {a.isActive ? '✅ Active' : '❌ Inactive'}
