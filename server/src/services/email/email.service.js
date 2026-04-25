@@ -57,6 +57,12 @@ class EmailService {
     return this.sendEmail({ to, ...t });
   }
 
+  async sendPasswordResetOTP(to, otp, name, userId = null) {
+    const company = await getCompanyInfo(userId);
+    const t = templates.passwordResetOtp({ name, otp, expireMinutes: process.env.OTP_EXPIRE_MINUTES || 10, company });
+    return this.sendEmail({ to, ...t });
+  }
+
   async sendTagAlert({ to, userName, taggedBy, platform, content, accountName, userId }) {
     const company = await getCompanyInfo(userId);
     const t = templates.tagAlert({ name: userName, taggedBy, platform, content, accountName, company });

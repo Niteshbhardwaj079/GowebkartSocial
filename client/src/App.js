@@ -6,6 +6,7 @@ import 'react-toastify/dist/ReactToastify.css';
 import store, { fetchMe } from './store';
 
 import LoginPage               from './pages/LoginPage';
+import ForgotPasswordPage      from './pages/ForgotPasswordPage';
 import DashboardPage           from './pages/DashboardPage';
 import CreatePostPage          from './pages/CreatePostPage';
 import PostsPage               from './pages/PostsPage';
@@ -43,6 +44,7 @@ function AppContent() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard"        element={<DashboardPage />} />

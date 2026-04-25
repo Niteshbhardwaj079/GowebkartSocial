@@ -179,7 +179,30 @@ const templates = {
     })
   }),
 
-  // 3. PASSWORD RESET
+  // 3a. PASSWORD RESET — OTP version
+  passwordResetOtp: ({ name, otp, expireMinutes = 10, company }) => ({
+    subject: `${otp} — Password Reset OTP | ${company?.name || 'SocialSaaS'}`,
+    html: baseTemplate({
+      company,
+      title: 'Password Reset OTP',
+      preheader: `Aapka password reset OTP: ${otp} — ${expireMinutes} minutes mein expire hoga`,
+      body: `
+        <div class="greeting">Namaste ${name}! 🔑</div>
+        <p>Aapne <strong>${company?.name || 'SocialSaaS'}</strong> account ka password reset request kiya hai. Yeh OTP use karein:</p>
+
+        <div class="otp-box">
+          <div class="otp-code">${otp}</div>
+          <div class="otp-timer">⏰ Yeh OTP <strong>${expireMinutes} minutes</strong> mein expire ho jayega</div>
+        </div>
+
+        <div class="info-box warning">
+          <p>🔒 <strong>Security:</strong> Agar aapne password reset request nahi kiya to is email ko ignore karein. Aapka password safe hai. ${company?.name || 'SocialSaaS'} team kabhi OTP nahi maangti.</p>
+        </div>
+      `
+    })
+  }),
+
+  // 3b. PASSWORD RESET — link version (kept for backward compat)
   passwordReset: ({ name, resetUrl, company }) => ({
     subject: `🔑 Password Reset — ${company?.name || 'SocialSaaS'}`,
     html: baseTemplate({

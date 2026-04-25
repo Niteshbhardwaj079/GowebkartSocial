@@ -126,38 +126,61 @@ exports.demoLogin = async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 };
 
-// ✅ FORGOT PASSWORD
+// ✅ FORGOT PASSWORD — OTP-based (sends OTP via email)
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
+    if (!email) return res.status(400).json({ success: false, message: 'Email dalein' });
+
     const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ success: false, message: 'Yeh email registered nahi hai' });
+    // Don't leak whether email exists — always respond positively (anti-enumeration)
+    if (!user) {
+      return res.json({ success: true, message: `Agar yeh email registered hai to OTP ${email} par bheja gaya hai.` });
+    }
 
-    const token  = crypto.randomBytes(32).toString('hex');
-    user.resetPasswordToken  = crypto.createHash('sha256').update(token).digest('hex');
-    user.resetPasswordExpire = new Date(Date.now() + 30*60*1000);
-    await user.save();
+    // Rate-limit: last password_reset OTP within 60s
+    const recent = await OTP.findOne({ email, type: 'password_reset', createdAt: { $gte: new Date(Date.now()-60000) } });
+    if (recent) return res.status(429).json({ success: false, message: '1 minute baad try karein' });
 
-    await emailService.sendPasswordReset(email, user.name, `${process.env.CLIENT_URL}/reset-password?token=${token}`);
-    res.json({ success: true, message: `✅ Password reset link ${email} par bheja gaya` });
-  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+    const otpCode = generateOTP();
+    await OTP.deleteMany({ email, type: 'password_reset' });
+    await OTP.create({ email, otp: otpCode, type: 'password_reset', expiresAt: new Date(Date.now() + (Number(process.env.OTP_EXPIRE_MINUTES)||10)*60000) });
+    await emailService.sendPasswordResetOTP(email, otpCode, user.name, user._id);
+
+    logger.info(`Password reset OTP sent: ${email}`);
+    res.json({ success: true, message: `✅ Password reset OTP ${email} par bheja gaya` });
+  } catch (e) { logger.error(e.message); res.status(500).json({ success: false, message: e.message }); }
 };
 
-// ✅ RESET PASSWORD
+// ✅ RESET PASSWORD — verify OTP + set new password in one call
 exports.resetPassword = async (req, res) => {
   try {
-    const { token, password } = req.body;
-    const hashed = crypto.createHash('sha256').update(token).digest('hex');
-    const user   = await User.findOne({ resetPasswordToken: hashed, resetPasswordExpire: { $gt: Date.now() } });
-    if (!user) return res.status(400).json({ success: false, message: 'Token invalid ya expire' });
+    const { email, otp, password } = req.body;
+    if (!email || !otp || !password) return res.status(400).json({ success: false, message: 'Email, OTP aur naya password dalein' });
     if (password.length < 6) return res.status(400).json({ success: false, message: 'Password 6+ characters ka hona chahiye' });
+
+    const rec = await OTP.findOne({ email, type: 'password_reset', isUsed: false });
+    if (!rec) return res.status(400).json({ success: false, message: 'OTP nahi mila. Dobara request karein.' });
+    if (new Date() > rec.expiresAt) { await OTP.deleteOne({ _id: rec._id }); return res.status(400).json({ success: false, message: 'OTP expire ho gaya' }); }
+    if (rec.attempts >= 5) { await OTP.deleteOne({ _id: rec._id }); return res.status(400).json({ success: false, message: 'Bahut attempts. Naya OTP mangaein.' }); }
+
+    if (!(await rec.compareOTP(otp))) {
+      rec.attempts++; await rec.save();
+      return res.status(400).json({ success: false, message: `Galat OTP. ${5 - rec.attempts} attempts baaki.` });
+    }
+
+    rec.isUsed = true; await rec.save();
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ success: false, message: 'User nahi mila' });
 
     user.password = password;
     user.resetPasswordToken  = undefined;
     user.resetPasswordExpire = undefined;
     await user.save();
-    res.json({ success: true, message: '✅ Password change ho gaya!' });
-  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+
+    logger.info(`Password reset successful: ${email}`);
+    res.json({ success: true, message: '✅ Password change ho gaya! Ab login karein.' });
+  } catch (e) { logger.error(e.message); res.status(500).json({ success: false, message: e.message }); }
 };
 
 exports.getMe = async (req, res) => {

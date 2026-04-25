@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { loginUser, registerUser, demoLogin } from '../store';
 import api from '../services/api';
@@ -180,6 +180,13 @@ export default function LoginPage() {
             <button type="submit" className="btn btn-primary w-full btn-lg" disabled={loading}>
               {loading?'⟳ Please wait...':tab==='login'?'Sign In →':'Create Account →'}
             </button>
+            {tab==='login' && (
+              <div style={{ textAlign:'right',marginTop:10 }}>
+                <Link to="/forgot-password" style={{ color:'#0066cc',fontSize:12,textDecoration:'none',fontWeight:600 }}>
+                  Password bhool gaye?
+                </Link>
+              </div>
+            )}
           </form>
 
           <div style={{ position:'relative',textAlign:'center',margin:'16px 0' }}>
