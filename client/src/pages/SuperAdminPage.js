@@ -15,6 +15,7 @@ const SA = {
   toggleStatus: (id, v)    => api.put(`/superadmin/users/${id}/status`, { isActive: v }),
   promote:      (id)       => api.put(`/superadmin/users/${id}/promote`),
   demote:       (id)       => api.put(`/superadmin/users/${id}/demote`),
+  deleteUser:   (id)       => api.delete(`/superadmin/users/${id}`),
   getPlans:     ()         => api.get('/superadmin/plans'),
   createPlan:   (d)        => api.post('/superadmin/plans', d),
   updatePlanDB: (id, d)    => api.put(`/superadmin/plans/${id}`, d),
@@ -261,6 +262,24 @@ export default function SuperAdminPage() {
     loadData();
   };
 
+  const handleDelete = async (userId, name, email) => {
+    const confirmEmail = window.prompt(
+      `⚠️ DELETE ${name} (${email})?\n\nYe permanent hai — user ke saare posts, social accounts, settings delete ho jaayenge. Payments aur audit log preserve rahenge.\n\nConfirm karne ke liye email type karein:`
+    );
+    if (confirmEmail?.trim().toLowerCase() !== email?.toLowerCase()) {
+      if (confirmEmail !== null) toast.error('Email match nahi hua. Cancelled.');
+      return;
+    }
+    try {
+      await SA.deleteUser(userId);
+      toast.success(`🗑️ ${name} deleted`);
+      setUsers(u => u.filter(x => x._id !== userId));
+      setAdmins(a => a.filter(x => x._id !== userId));
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Delete failed');
+    }
+  };
+
   const handleSavePlan = async (form) => {
     if (editPlan?._id) { await SA.updatePlanDB(editPlan._id, form); toast.success('Plan updated!'); }
     else               { await SA.createPlan(form);                  toast.success('Plan created!'); }
@@ -447,6 +466,11 @@ export default function SuperAdminPage() {
                                 {u.isActive ? 'Block' : 'Unblock'}
                               </button>
                             )}
+                            {u.role !== 'superadmin' && (
+                              <button className="btn btn-sm" style={{ background:'#fff0f0', color:'#e53e3e', border:'1px solid #ffcccc', fontSize:11 }} title="Permanently delete user" onClick={() => handleDelete(u._id, u.name, u.email)}>
+                                🗑️
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -504,6 +528,9 @@ export default function SuperAdminPage() {
                                 <button className="btn btn-sm btn-secondary" onClick={() => handleDemote(a._id, a.name)}>↓ Demote</button>
                                 <button className={`btn btn-sm ${a.isActive ? 'btn-danger' : 'btn-success'}`} onClick={() => handleToggleStatus(a._id, a.isActive)}>
                                   {a.isActive ? 'Block' : 'Unblock'}
+                                </button>
+                                <button className="btn btn-sm" style={{ background:'#fff0f0', color:'#e53e3e', border:'1px solid #ffcccc', fontSize:11 }} title="Permanently delete admin" onClick={() => handleDelete(a._id, a.name, a.email)}>
+                                  🗑️
                                 </button>
                               </>
                             )}

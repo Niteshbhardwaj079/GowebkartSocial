@@ -1,7 +1,54 @@
-const { User, Company, Post } = require('../models');
+const { User, Company, Post, SocialAccount } = require('../models');
 const Plan = require('../models/Plan.model');
+const OTP = require('../models/OTP.model');
+const NotificationSettings = require('../models/NotificationSettings.model');
+const StorageSettings = require('../models/StorageSettings.model');
+const UserApiSettings = require('../models/UserApiSettings.model');
+const Subscription = require('../models/Subscription.model');
+const SupportTicket = require('../models/SupportTicket.model');
 const audit = require('../services/audit/audit.service');
 const logger = require('../utils/logger');
+
+/**
+ * Cascade delete a user and all user-scoped data.
+ * Preserves Payment and ActivityLog rows for legal/audit purposes (those have
+ * denormalized email/role on them so they remain readable after deletion).
+ *
+ * Returns counts for diagnostics.
+ */
+async function cascadeDeleteUser(user) {
+  const userId = user._id;
+  const email  = user.email;
+  const results = await Promise.allSettled([
+    Post.deleteMany({ user: userId }),
+    SocialAccount.deleteMany({ user: userId }),
+    OTP.deleteMany({ email }),
+    NotificationSettings.deleteMany({ user: userId }),
+    StorageSettings.deleteMany({ user: userId }),
+    UserApiSettings.deleteMany({ user: userId }),
+    Subscription.deleteMany({ user: userId }),
+    SupportTicket.deleteMany({ user: userId }),
+  ]);
+  // Owner-of-company cleanup: if this user was the only owner of a company with
+  // no remaining members, drop the company too. Otherwise just unset owner.
+  if (user.company) {
+    const remaining = await User.countDocuments({ company: user.company, _id: { $ne: userId } });
+    if (remaining === 0) {
+      await Company.findByIdAndDelete(user.company);
+    } else {
+      const company = await Company.findById(user.company);
+      if (company && String(company.owner) === String(userId)) {
+        // Promote oldest remaining user to owner
+        const newOwner = await User.findOne({ company: user.company, _id: { $ne: userId } }).sort({ createdAt: 1 });
+        if (newOwner) { company.owner = newOwner._id; await company.save(); }
+      }
+    }
+  }
+  await User.findByIdAndDelete(userId);
+  return results.map((r, i) => ({ ok: r.status === 'fulfilled', deletedCount: r.value?.deletedCount }));
+}
+
+exports.cascadeDeleteUser = cascadeDeleteUser;
 
 // Aggregate post + engagement stats per user. Returns Map<userId, stats>.
 async function getPostStatsByUser(userIds) {
@@ -310,6 +357,31 @@ exports.demoteToUser = async (req, res) => {
     res.json({ success: true, message: `${user.name} is now a regular User`, user });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ✅ DELETE user (superadmin — can delete anyone except superadmin and self)
+exports.deleteUser = async (req, res) => {
+  try {
+    const target = await User.findById(req.params.id);
+    if (!target) return res.status(404).json({ success: false, message: 'User not found' });
+    if (target.role === 'superadmin') return res.status(403).json({ success: false, message: 'Cannot delete a superadmin' });
+    if (String(target._id) === String(req.user._id)) return res.status(400).json({ success: false, message: "You can't delete your own account" });
+
+    // Audit BEFORE deletion so we still have user info captured
+    audit.log({ req, action: 'user.deleted', category: 'admin',
+      description: `${req.user.email} deleted ${target.role} ${target.email}`,
+      target: { type: 'user', id: target._id, name: target.name },
+      metadata: { email: target.email, role: target.role, plan: target.plan },
+      company: target.company });
+
+    const counts = await cascadeDeleteUser(target);
+    logger.info(`User deleted: ${target.email} by ${req.user.email}`);
+
+    res.json({ success: true, message: `🗑️ ${target.name} deleted`, counts });
+  } catch (e) {
+    logger.error(`Delete user error: ${e.message}`);
+    res.status(500).json({ success: false, message: e.message });
   }
 };
 

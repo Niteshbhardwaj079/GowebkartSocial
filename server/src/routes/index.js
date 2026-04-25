@@ -282,6 +282,7 @@ adminRouter.get('/users', protect, authorize('admin','superadmin'), async (req, 
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 const audit = require('../services/audit/audit.service');
+const { cascadeDeleteUser: superAdminCascade } = require('../controllers/superAdmin.controller');
 adminRouter.put('/users/:id/plan', protect, authorize('admin','superadmin'), async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(req.params.id, { plan: req.body.plan }, { new: true });
@@ -299,6 +300,27 @@ adminRouter.put('/users/:id/status', protect, authorize('admin','superadmin'), a
       description: `${req.user.email} ${req.body.isActive ? 'activated' : 'deactivated'} ${user.email}`,
       target: { type: 'user', id: user._id, name: user.name }, company: user.company });
     res.json({ success: true, user });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+// Admin can delete users in their own company (NOT admins or superadmins)
+adminRouter.delete('/users/:id', protect, authorize('admin','superadmin'), async (req, res) => {
+  try {
+    const target = await User.findById(req.params.id);
+    if (!target) return res.status(404).json({ success: false, message: 'User not found' });
+    if (target.role !== 'user') return res.status(403).json({ success: false, message: 'Admins can only delete regular users' });
+    if (String(target._id) === String(req.user._id)) return res.status(400).json({ success: false, message: "You can't delete your own account" });
+    if (req.user.role === 'admin' && String(target.company) !== String(req.user.company?._id || req.user.company)) {
+      return res.status(403).json({ success: false, message: 'Can only delete users in your own company' });
+    }
+
+    audit.log({ req, action: 'user.deleted', category: 'admin',
+      description: `${req.user.email} deleted user ${target.email}`,
+      target: { type: 'user', id: target._id, name: target.name },
+      metadata: { email: target.email, role: target.role, plan: target.plan },
+      company: target.company });
+
+    await superAdminCascade(target);
+    res.json({ success: true, message: `🗑️ ${target.name} deleted` });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 

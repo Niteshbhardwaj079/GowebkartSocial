@@ -8,6 +8,7 @@ const adminAPI = {
   getUsers:    ()          => api.get('/admin/users'),
   updatePlan:  (id, plan)  => api.put(`/admin/users/${id}/plan`,   { plan }),
   updateStatus:(id, active)=> api.put(`/admin/users/${id}/status`, { isActive: active }),
+  deleteUser:  id          => api.delete(`/admin/users/${id}`),
 };
 
 export default function AdminPage() {
@@ -31,6 +32,23 @@ export default function AdminPage() {
     await adminAPI.updateStatus(id, active);
     setUsers(u => u.map(x => x._id===id ? { ...x, isActive: active } : x));
     toast.success(active ? 'Account activated' : 'Account deactivated');
+  };
+
+  const handleDelete = async (id, name, email) => {
+    const confirmEmail = window.prompt(
+      `⚠️ DELETE ${name} (${email})?\n\nYe permanent hai — user ke saare posts, social accounts, settings delete ho jaayenge.\n\nConfirm karne ke liye email type karein:`
+    );
+    if (confirmEmail?.trim().toLowerCase() !== email?.toLowerCase()) {
+      if (confirmEmail !== null) toast.error('Email match nahi hua. Cancelled.');
+      return;
+    }
+    try {
+      await adminAPI.deleteUser(id);
+      toast.success(`🗑️ ${name} deleted`);
+      setUsers(u => u.filter(x => x._id !== id));
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Delete failed');
+    }
   };
 
   const fmt = (n) => {
@@ -119,9 +137,16 @@ export default function AdminPage() {
                     <td style={{ fontSize:12, color:'var(--muted)' }}>{new Date(u.createdAt).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'2-digit' })}</td>
                     <td>
                       {u._id !== me?._id && (
-                        <button className={`btn btn-sm ${u.isActive?'btn-danger':'btn-success'}`} onClick={()=>handleStatus(u._id,!u.isActive)}>
-                          {u.isActive ? 'Deactivate' : 'Activate'}
-                        </button>
+                        <div className="flex gap-2">
+                          <button className={`btn btn-sm ${u.isActive?'btn-danger':'btn-success'}`} onClick={()=>handleStatus(u._id,!u.isActive)}>
+                            {u.isActive ? 'Deactivate' : 'Activate'}
+                          </button>
+                          {u.role === 'user' && (
+                            <button className="btn btn-sm" style={{ background:'#fff0f0', color:'#e53e3e', border:'1px solid #ffcccc', fontSize:11 }} title="Permanently delete user" onClick={()=>handleDelete(u._id, u.name, u.email)}>
+                              🗑️
+                            </button>
+                          )}
+                        </div>
                       )}
                     </td>
                   </tr>

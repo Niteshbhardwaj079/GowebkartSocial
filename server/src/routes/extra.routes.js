@@ -23,6 +23,7 @@ superAdminRouter.put('/users/:id/plan',    protect, isSuperAdmin, superAdminCtrl
 superAdminRouter.put('/users/:id/status',  protect, isSuperAdmin, superAdminCtrl.updateUserStatus);
 superAdminRouter.put('/users/:id/promote', protect, isSuperAdmin, superAdminCtrl.promoteToAdmin);
 superAdminRouter.put('/users/:id/demote',  protect, isSuperAdmin, superAdminCtrl.demoteToUser);
+superAdminRouter.delete('/users/:id',      protect, isSuperAdmin, superAdminCtrl.deleteUser);
 superAdminRouter.get('/admins',            protect, isSuperAdmin, superAdminCtrl.getAllAdmins);
 superAdminRouter.post('/admins',           protect, isSuperAdmin, superAdminCtrl.createAdmin);
 superAdminRouter.put('/admins/:id/permissions', protect, isSuperAdmin, superAdminCtrl.updateAdminPermissions);

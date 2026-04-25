@@ -103,6 +103,7 @@ export const adminAPI = {
   getUsers:     () => api.get('/admin/users'),
   updatePlan:   (id, plan)     => api.put(`/admin/users/${id}/plan`, { plan }),
   updateStatus: (id, isActive) => api.put(`/admin/users/${id}/status`, { isActive }),
+  deleteUser:   id             => api.delete(`/admin/users/${id}`),
 };
 
 export const auditAPI = {
