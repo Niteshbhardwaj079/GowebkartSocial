@@ -24,6 +24,18 @@ exports.getSettings = async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 };
 
+// If user is still on default 'local' or has no active provider, promote
+// the just-saved provider to active. Saves the user a click and prevents
+// the "Storage configure nahi hai" error on the next upload.
+async function autoActivateIfNoActive(userId, provider) {
+  const cur = await StorageSettings.findOne({ user: userId }).select('activeProvider');
+  if (!cur || !cur.activeProvider || cur.activeProvider === 'local') {
+    await StorageSettings.findOneAndUpdate({ user: userId }, { activeProvider: provider });
+    return true;
+  }
+  return false;
+}
+
 // ✅ SAVE Cloudinary keys
 exports.saveCloudinary = async (req, res) => {
   try {
@@ -51,9 +63,10 @@ exports.saveCloudinary = async (req, res) => {
       },
       { upsert: true, new: true }
     );
+    const activated = await autoActivateIfNoActive(req.user._id, 'cloudinary');
 
-    logger.info(`Cloudinary configured for user ${req.user._id}`);
-    res.json({ success: true, message: '✅ Cloudinary connected! Ab images/videos upload ho sakti hain.' });
+    logger.info(`Cloudinary configured for user ${req.user._id}${activated ? ' (auto-activated)' : ''}`);
+    res.json({ success: true, message: activated ? '✅ Cloudinary connected & set as active storage!' : '✅ Cloudinary connected!' });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 };
 
@@ -86,8 +99,9 @@ exports.saveS3 = async (req, res) => {
       { upsert: true, new: true }
     );
 
-    logger.info(`AWS S3 configured for user ${req.user._id}`);
-    res.json({ success: true, message: '✅ AWS S3 connected! Files aapke bucket mein store hongi.' });
+    const activated = await autoActivateIfNoActive(req.user._id, 'aws_s3');
+    logger.info(`AWS S3 configured for user ${req.user._id}${activated ? ' (auto-activated)' : ''}`);
+    res.json({ success: true, message: activated ? '✅ AWS S3 connected & set as active storage!' : '✅ AWS S3 connected!' });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 };
 
@@ -119,8 +133,9 @@ exports.saveImageKit = async (req, res) => {
       { upsert: true, new: true }
     );
 
-    logger.info(`ImageKit configured for user ${req.user._id}`);
-    res.json({ success: true, message: '✅ ImageKit connected!' });
+    const activated = await autoActivateIfNoActive(req.user._id, 'imagekit');
+    logger.info(`ImageKit configured for user ${req.user._id}${activated ? ' (auto-activated)' : ''}`);
+    res.json({ success: true, message: activated ? '✅ ImageKit connected & set as active storage!' : '✅ ImageKit connected!' });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 };
 
@@ -235,14 +250,24 @@ exports.uploadFile = async (req, res) => {
       '+imagekit.publicKey +imagekit.privateKey +imagekit.urlEndpoint +imagekit.folder'
     );
 
-    const provider = settings?.activeProvider || 'local';
-    const config   = settings?.[provider] || {};
+    let provider = settings?.activeProvider || 'local';
+    // Self-heal: if active is 'local' but the user actually has a provider
+    // configured, pick the first configured one (saves a click).
+    if (provider === 'local' && settings) {
+      for (const candidate of ['cloudinary', 'imagekit', 'aws_s3']) {
+        if (settings[candidate]?.isConfigured) { provider = candidate; break; }
+      }
+      if (provider !== 'local') {
+        await StorageSettings.findOneAndUpdate({ user: req.user._id }, { activeProvider: provider });
+      }
+    }
+    const config = settings?.[provider] || {};
 
-    // Agar koi provider configured nahi
-    if (provider === 'local' && (!settings || !settings.cloudinary?.isConfigured)) {
+    // No provider at all → ask the user to set one up
+    if (provider === 'local') {
       return res.status(400).json({
         success: false,
-        message: '⚠️ Storage configure nahi hai. Storage Settings mein koi ek provider setup karein.',
+        message: '⚠️ Storage configure nahi hai. Storage Settings me koi ek provider (Cloudinary / ImageKit / AWS S3) setup karein.',
         redirect: '/storage-settings'
       });
     }
