@@ -1,4 +1,5 @@
 const { Post, User } = require('../models');
+const audit = require('../services/audit/audit.service');
 const logger = require('../utils/logger');
 
 // Plan ke hisaab se post limits
@@ -34,6 +35,19 @@ exports.createPost = async (req, res) => {
     await User.findByIdAndUpdate(user._id, { $inc: { 'usage.postsThisMonth': 1 } });
 
     logger.info(`Post created: ${post._id} by user ${user._id}`);
+    audit.log({
+      req,
+      action: post.status === 'scheduled' ? 'post.scheduled' : 'post.created',
+      category: 'post',
+      description: post.status === 'scheduled'
+        ? `Scheduled post for ${new Date(post.scheduling.scheduledAt).toLocaleString('en-IN')}`
+        : `Created post (${post.platforms?.map(p => p.platform).join(', ') || 'draft'})`,
+      target: { type: 'post', id: post._id, name: (post.content?.text || '').slice(0, 60) },
+      metadata: {
+        platforms: post.platforms?.map(p => p.platform),
+        scheduledAt: post.scheduling?.scheduledAt,
+      },
+    });
     res.status(201).json({ success: true, message: 'Post created!', post });
 
   } catch (error) {
@@ -115,6 +129,11 @@ exports.deletePost = async (req, res) => {
 
     if (!post) return res.status(404).json({ success: false, message: 'Post not found or cannot be deleted' });
 
+    audit.log({
+      req, action: 'post.deleted', category: 'post',
+      description: `Deleted post: ${(post.content?.text || '').slice(0, 60)}`,
+      target: { type: 'post', id: post._id, name: (post.content?.text || '').slice(0, 60) },
+    });
     res.json({ success: true, message: 'Post deleted!' });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

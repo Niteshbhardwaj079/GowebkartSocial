@@ -30,6 +30,7 @@ const notificationRouter = require('./routes/notification.routes');
 const storageRouter      = require('./routes/storage.routes');
 const supportRouter      = require('./routes/support.routes');
 const paymentRouter      = require('./routes/payment.routes');
+const auditRouter        = require('./routes/audit.routes');
 
 const app = express();
 // Render/Heroku/etc sit behind a proxy — needed for express-rate-limit to read real IP
@@ -80,6 +81,7 @@ app.use('/api/company',       companyRouter);
 app.use('/api/notifications', notificationRouter);
 app.use('/api/support',       supportRouter);
 app.use('/api/payment',       paymentRouter);
+app.use('/api/audit',         auditRouter);
 app.use('/api',               publicPlansRouter);
 
 app.get('/health', (req, res) => res.json({ status:'OK', message:'🚀 Server running!', time: new Date() }));

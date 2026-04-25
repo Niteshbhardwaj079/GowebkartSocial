@@ -281,15 +281,23 @@ adminRouter.get('/users', protect, authorize('admin','superadmin'), async (req, 
     res.json({ success: true, users });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
+const audit = require('../services/audit/audit.service');
 adminRouter.put('/users/:id/plan', protect, authorize('admin','superadmin'), async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(req.params.id, { plan: req.body.plan }, { new: true });
+    audit.log({ req, action: 'user.plan.changed', category: 'plan',
+      description: `${req.user.email} set ${user.email}'s plan to ${req.body.plan}`,
+      target: { type: 'user', id: user._id, name: user.name },
+      metadata: { plan: req.body.plan }, company: user.company });
     res.json({ success: true, user });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 adminRouter.put('/users/:id/status', protect, authorize('admin','superadmin'), async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(req.params.id, { isActive: req.body.isActive }, { new: true });
+    audit.log({ req, action: req.body.isActive ? 'user.activated' : 'user.deactivated', category: 'admin',
+      description: `${req.user.email} ${req.body.isActive ? 'activated' : 'deactivated'} ${user.email}`,
+      target: { type: 'user', id: user._id, name: user.name }, company: user.company });
     res.json({ success: true, user });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });

@@ -37,3 +37,15 @@ exports.requirePlan = (...plans) => (req, res, next) => {
   }
   next();
 };
+
+// ✅ Per-admin permission check (superadmin always passes)
+exports.requirePermission = (...keys) => (req, res, next) => {
+  if (req.user.role === 'superadmin') return next();
+  const perms = req.user.permissions || {};
+  for (const k of keys) {
+    if (!perms[k]) {
+      return res.status(403).json({ success: false, message: `Permission denied: ${k} not granted by super admin` });
+    }
+  }
+  next();
+};

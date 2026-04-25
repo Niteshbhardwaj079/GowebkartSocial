@@ -3,6 +3,7 @@ const crypto       = require('crypto');
 const { User, Company } = require('../models');
 const OTP          = require('../models/OTP.model');
 const emailService = require('../services/email/email.service');
+const audit        = require('../services/audit/audit.service');
 const logger       = require('../utils/logger');
 
 const generateToken = (id) => jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRE || '7d' });
@@ -38,6 +39,14 @@ exports.register = async (req, res) => {
     await emailService.sendOTP(email, otpCode, name);
 
     logger.info(`Registered: ${email}`);
+    audit.log({
+      req,
+      actor: { userId: user._id, name: user.name, email: user.email, role: user.role },
+      action: 'user.registered', category: 'auth',
+      description: `New account: ${name} (${email})`,
+      target: { type: 'user', id: user._id, name: user.name },
+      company: company._id,
+    });
     res.status(201).json({ success: true, requireOTP: true, email, userId: user._id, message: `✅ OTP ${email} par bheja gaya! Verify karein.` });
   } catch (e) { logger.error(e.message); res.status(500).json({ success: false, message: e.message }); }
 };
@@ -65,6 +74,14 @@ exports.verifyOTP = async (req, res) => {
     await emailService.sendWelcome(email, user.name, user.plan);
     const token = generateToken(user._id);
     logger.info(`Email verified: ${email}`);
+    audit.log({
+      req,
+      actor: { userId: user._id, name: user.name, email: user.email, role: user.role },
+      action: 'user.email_verified', category: 'auth',
+      description: `Email verified: ${email}`,
+      target: { type: 'user', id: user._id, name: user.name },
+      company: user.company?._id,
+    });
     res.json({ success: true, message: '🎉 Email verify ho gaya! Welcome!', token, user: userResponse(user) });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 };
@@ -108,6 +125,14 @@ exports.login = async (req, res) => {
 
     const token = generateToken(user._id);
     logger.info(`Login: ${email}`);
+    audit.log({
+      req,
+      actor: { userId: user._id, name: user.name, email: user.email, role: user.role },
+      action: 'user.login', category: 'auth',
+      description: `Login: ${email}`,
+      target: { type: 'user', id: user._id, name: user.name },
+      company: user.company?._id,
+    });
     res.json({ success: true, message: 'Login successful!', token, user: userResponse(user) });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 };
@@ -179,6 +204,14 @@ exports.resetPassword = async (req, res) => {
     await user.save();
 
     logger.info(`Password reset successful: ${email}`);
+    audit.log({
+      req,
+      actor: { userId: user._id, name: user.name, email: user.email, role: user.role },
+      action: 'user.password_reset', category: 'auth',
+      description: `Password reset via OTP: ${email}`,
+      target: { type: 'user', id: user._id, name: user.name },
+      company: user.company,
+    });
     res.json({ success: true, message: '✅ Password change ho gaya! Ab login karein.' });
   } catch (e) { logger.error(e.message); res.status(500).json({ success: false, message: e.message }); }
 };
@@ -204,6 +237,9 @@ exports.changePassword = async (req, res) => {
     const user = await User.findById(req.user._id).select('+password');
     if (!(await user.comparePassword(currentPassword))) return res.status(400).json({ success: false, message: 'Current password galat hai' });
     user.password = newPassword; await user.save();
+    audit.log({ req, action: 'user.password_changed', category: 'auth',
+      description: `Password changed by ${req.user.email}`,
+      target: { type: 'user', id: user._id, name: user.name } });
     res.json({ success: true, message: '✅ Password change ho gaya!' });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 };

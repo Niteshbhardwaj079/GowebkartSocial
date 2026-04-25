@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import api from '../services/api';
 import PasswordInput from '../components/common/PasswordInput';
+import ActivityLog from '../components/common/ActivityLog';
 
 const SA = {
   getStats:     ()         => api.get('/superadmin/stats'),
@@ -19,7 +20,51 @@ const SA = {
   updatePlanDB: (id, d)    => api.put(`/superadmin/plans/${id}`, d),
   deletePlan:   (id)       => api.delete(`/superadmin/plans/${id}`),
   seedPlans:    ()         => api.post('/superadmin/plans/seed'),
+  updatePermissions: (id, p) => api.put(`/superadmin/admins/${id}/permissions`, { permissions: p }),
 };
+
+const PERMISSION_DEFS = [
+  { key: 'manageUsers',   label: 'Manage Users',     desc: 'Promote, block, view users in their company' },
+  { key: 'changePlans',   label: 'Change Plans',     desc: 'Upgrade/downgrade user plans' },
+  { key: 'viewAllPosts',  label: 'View All Posts',   desc: 'See posts of all users in their company' },
+  { key: 'deletePosts',   label: 'Delete Posts',     desc: "Can delete other users' posts" },
+  { key: 'manageBilling', label: 'Manage Billing',   desc: 'Razorpay / payment access' },
+  { key: 'viewAuditLog',  label: 'View Activity Log', desc: "See company users' activity history" },
+];
+
+// Permissions modal
+function PermissionsModal({ admin, onSave, onClose }) {
+  const [perms, setPerms] = useState(admin.permissions || {});
+  const [saving, setSaving] = useState(false);
+  const handle = async () => { setSaving(true); try { await onSave(admin._id, perms); } finally { setSaving(false); } };
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
+        <div className="modal-title">🔧 Permissions — {admin.name}</div>
+        <div className="modal-sub">Toggle karke set karo ye admin kya kya kar sakta hai. Save ke baad audit log me record hoga.</div>
+        {PERMISSION_DEFS.map(p => (
+          <div key={p.key} onClick={() => setPerms(s => ({ ...s, [p.key]: !s[p.key] }))}
+            style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 14px',
+              background: perms[p.key] ? 'rgba(76,255,159,0.08)' : 'var(--bg3)',
+              border: `1px solid ${perms[p.key] ? 'rgba(76,255,159,0.3)' : 'var(--border)'}`,
+              borderRadius: 8, cursor:'pointer', marginBottom:8 }}>
+            <div>
+              <div style={{ fontWeight:600, fontSize:13 }}>{p.label}</div>
+              <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>{p.desc}</div>
+            </div>
+            <div style={{ width:42, height:22, borderRadius:11, background: perms[p.key] ? 'var(--success)' : '#ddd', position:'relative', flexShrink:0, transition:'all .2s' }}>
+              <div style={{ width:16, height:16, borderRadius:'50%', background:'#fff', position:'absolute', top:3, left: perms[p.key] ? 23 : 3, transition:'left .2s', boxShadow:'0 1px 3px rgba(0,0,0,0.2)' }} />
+            </div>
+          </div>
+        ))}
+        <div className="flex gap-3" style={{ marginTop:16 }}>
+          <button className="btn btn-primary" onClick={handle} disabled={saving}>{saving ? '⟳ Saving...' : '💾 Save Permissions'}</button>
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const Spinner = () => <div style={{ padding: 60, textAlign: 'center', color: 'var(--muted)' }}>⟳ Loading...</div>;
 
@@ -167,6 +212,7 @@ export default function SuperAdminPage() {
   const [showCreateAdmin, setShowCreateAdmin] = useState(false);
   const [showPlanModal,   setShowPlanModal]   = useState(false);
   const [editPlan,        setEditPlan]        = useState(null);
+  const [editPermAdmin,   setEditPermAdmin]   = useState(null);
 
   useEffect(() => { if (user && user.role !== 'superadmin') navigate('/dashboard'); }, [user, navigate]);
   useEffect(() => { loadData(); }, [tab]);
@@ -226,7 +272,15 @@ export default function SuperAdminPage() {
     { id: 'users',     icon: '👥', label: 'Users'     },
     { id: 'admins',    icon: '👑', label: 'Admins'    },
     { id: 'plans',     icon: '💎', label: 'Plans'     },
+    { id: 'audit',     icon: '📜', label: 'Activity Log' },
   ];
+
+  const handleSavePermissions = async (adminId, permissions) => {
+    await SA.updatePermissions(adminId, permissions);
+    toast.success('✅ Permissions saved');
+    setEditPermAdmin(null);
+    if (tab === 'admins') loadData();
+  };
 
   const RoleBadge = ({ role }) => (
     <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, textTransform: 'uppercase',
@@ -446,6 +500,7 @@ export default function SuperAdminPage() {
                           <div className="flex gap-2">
                             {a.role === 'admin' && (
                               <>
+                                <button className="btn btn-sm" style={{ background:'rgba(124,106,255,0.15)', color:'var(--accent)', border:'1px solid rgba(124,106,255,0.3)', fontSize:11 }} onClick={() => setEditPermAdmin(a)}>🔧 Permissions</button>
                                 <button className="btn btn-sm btn-secondary" onClick={() => handleDemote(a._id, a.name)}>↓ Demote</button>
                                 <button className={`btn btn-sm ${a.isActive ? 'btn-danger' : 'btn-success'}`} onClick={() => handleToggleStatus(a._id, a.isActive)}>
                                   {a.isActive ? 'Block' : 'Unblock'}
@@ -469,6 +524,11 @@ export default function SuperAdminPage() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* ─── ACTIVITY LOG ─── */}
+        {tab === 'audit' && (
+          <ActivityLog scope="all" showSettings={true} />
         )}
 
         {/* ─── PLANS ─── */}
@@ -518,6 +578,7 @@ export default function SuperAdminPage() {
 
       {showCreateAdmin && <CreateAdminModal onSave={handleCreateAdmin} onClose={() => setShowCreateAdmin(false)} />}
       {showPlanModal   && <PlanModal plan={editPlan} onSave={handleSavePlan} onClose={() => { setShowPlanModal(false); setEditPlan(null); }} />}
+      {editPermAdmin   && <PermissionsModal admin={editPermAdmin} onSave={handleSavePermissions} onClose={() => setEditPermAdmin(null)} />}
     </div>
   );
 }

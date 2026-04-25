@@ -105,4 +105,20 @@ export const adminAPI = {
   updateStatus: (id, isActive) => api.put(`/admin/users/${id}/status`, { isActive }),
 };
 
+export const auditAPI = {
+  // SuperAdmin
+  list:           p => api.get('/audit',           { params: p }),
+  stats:          p => api.get('/audit/stats',     { params: p }),
+  getSettings:    () => api.get('/audit/settings'),
+  updateSettings: d => api.put('/audit/settings', d),
+  clear:          d => api.delete('/audit/clear', { data: d || {} }),
+  // Admin (company-scoped)
+  companyList:    p => api.get('/audit/company',       { params: p }),
+  companyStats:   p => api.get('/audit/company/stats', { params: p }),
+};
+
+export const superAdminAPI = {
+  updateAdminPermissions: (id, permissions) => api.put(`/superadmin/admins/${id}/permissions`, { permissions }),
+};
+
 export default api;

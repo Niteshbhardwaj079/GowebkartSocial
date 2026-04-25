@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import api from '../services/api';
+import ActivityLog from '../components/common/ActivityLog';
 
 const adminAPI = {
   getUsers:    ()          => api.get('/admin/users'),
@@ -11,6 +12,7 @@ const adminAPI = {
 
 export default function AdminPage() {
   const { user: me } = useSelector(s => s.auth);
+  const [tab,     setTab]     = useState('users');
   const [users,   setUsers]   = useState([]);
   const [loading, setLoading] = useState(true);
   const [search,  setSearch]  = useState('');
@@ -56,9 +58,23 @@ export default function AdminPage() {
     <div className="page fade-in">
       <div className="page-header">
         <div className="page-title">🛠️ Admin Panel</div>
-        <div className="page-sub">Users manage karein — plan change, activate/deactivate</div>
+        <div className="page-sub">Users manage karein aur company activity dekho</div>
       </div>
 
+      <div style={{ display:'flex', gap:4, marginBottom:20, background:'var(--bg3)', padding:4, borderRadius:'var(--radius2)', border:'1px solid var(--border)', width:'fit-content' }}>
+        {[
+          { id:'users',    icon:'👥', label:'Users' },
+          { id:'activity', icon:'📜', label:'Activity Log' },
+        ].map(t => (
+          <button key={t.id} className={`btn btn-sm ${tab===t.id ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(t.id)}>
+            {t.icon} {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'activity' && <ActivityLog scope="company" showSettings={false} />}
+
+      {tab === 'users' && <>
       <div style={{ marginBottom:16 }}>
         <input className="form-input" placeholder="🔍 Search users..." value={search} onChange={e=>setSearch(e.target.value)} style={{ maxWidth:280, fontSize:13 }} />
       </div>
@@ -115,6 +131,7 @@ export default function AdminPage() {
           </div>
         )}
       </div>
+      </>}
     </div>
   );
 }

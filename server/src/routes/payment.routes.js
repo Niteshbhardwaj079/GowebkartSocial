@@ -6,6 +6,7 @@ const expiryService  = require('../services/expiry/expiry.service');
 const emailService   = require('../services/email/email.service');
 const expiryTemplates = require('../services/email/expiry.templates');
 const Payment        = require('../models/Payment.model');
+const audit          = require('../services/audit/audit.service');
 const logger         = require('../utils/logger');
 
 // ── Get Razorpay public key ──
@@ -146,6 +147,10 @@ router.post('/verify', protect, async (req, res) => {
     await emailService.sendEmail({ to: req.user.email, ...template });
 
     logger.info(`✅ Payment verified & plan activated: ${req.user.email} → ${plan}`);
+    audit.log({ req, action: 'payment.completed', category: 'payment',
+      description: `Paid ₹${payment.amount} for ${payment.plan.toUpperCase()} plan (${payment.billingCycle})`,
+      target: { type: 'payment', id: payment._id, name: razorpayOrderId },
+      metadata: { amount: payment.amount, plan: payment.plan, billingCycle: payment.billingCycle, paymentId: razorpayPaymentId } });
 
     res.json({
       success:   true,

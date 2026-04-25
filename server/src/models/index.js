@@ -24,7 +24,17 @@ const UserSchema = new mongoose.Schema({
   isEmailVerified: { type: Boolean, default: false },
   resetPasswordToken:  String,
   resetPasswordExpire: Date,
-  isDemo: { type: Boolean, default: false }
+  isDemo: { type: Boolean, default: false },
+  // Per-admin capability flags. Only meaningful when role==='admin'.
+  // SuperAdmin always implicitly has all true; regular users always implicitly false.
+  permissions: {
+    manageUsers:    { type: Boolean, default: true  },  // create/promote/block users
+    changePlans:    { type: Boolean, default: true  },  // change user plans
+    viewAllPosts:   { type: Boolean, default: true  },  // see all company posts
+    deletePosts:    { type: Boolean, default: false },  // delete others' posts
+    manageBilling:  { type: Boolean, default: false },  // payment / Razorpay
+    viewAuditLog:   { type: Boolean, default: true  },  // see company activity log
+  },
 }, { timestamps: true });
 
 UserSchema.pre('save', async function(next) {

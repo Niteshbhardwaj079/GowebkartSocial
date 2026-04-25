@@ -1,5 +1,6 @@
 const { User, Company, Post } = require('../models');
 const Plan = require('../models/Plan.model');
+const audit = require('../services/audit/audit.service');
 const logger = require('../utils/logger');
 
 // Aggregate post + engagement stats per user. Returns Map<userId, stats>.
@@ -131,6 +132,10 @@ exports.updateUserPlan = async (req, res) => {
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
     logger.info(`Plan updated: ${user.email} → ${plan} by ${req.user.email}`);
+    audit.log({ req, action: 'user.plan.changed', category: 'plan',
+      description: `${req.user.email} changed ${user.email}'s plan to ${plan}`,
+      target: { type: 'user', id: user._id, name: user.name },
+      metadata: { plan }, company: user.company });
     res.json({ success: true, message: `Plan updated to ${plan}`, user });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -150,6 +155,9 @@ exports.updateUserStatus = async (req, res) => {
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
     logger.info(`User ${isActive ? 'activated' : 'deactivated'}: ${user.email}`);
+    audit.log({ req, action: isActive ? 'user.activated' : 'user.deactivated', category: 'admin',
+      description: `${req.user.email} ${isActive ? 'activated' : 'deactivated'} ${user.email}`,
+      target: { type: 'user', id: user._id, name: user.name }, company: user.company });
     res.json({ success: true, message: `User ${isActive ? 'activated' : 'deactivated'}`, user });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -256,6 +264,9 @@ exports.createAdmin = async (req, res) => {
     company.owner = admin._id;
     await company.save();
     logger.info(`Admin created: ${email} by ${req.user.email}`);
+    audit.log({ req, action: 'admin.created', category: 'admin',
+      description: `${req.user.email} created admin ${email}`,
+      target: { type: 'user', id: admin._id, name: admin.name }, company: company._id });
     res.status(201).json({
       success: true,
       message: `✅ Admin account created for ${name}`,
@@ -275,6 +286,9 @@ exports.promoteToAdmin = async (req, res) => {
       { new: true }
     ).select('-password');
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    audit.log({ req, action: 'user.promoted', category: 'admin',
+      description: `${req.user.email} promoted ${user.email} to admin`,
+      target: { type: 'user', id: user._id, name: user.name }, company: user.company });
     res.json({ success: true, message: `${user.name} is now an Admin! 👑`, user });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -290,9 +304,40 @@ exports.demoteToUser = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Cannot demote superadmin' });
     }
     const user = await User.findByIdAndUpdate(req.params.id, { role: 'user' }, { new: true }).select('-password');
+    audit.log({ req, action: 'user.demoted', category: 'admin',
+      description: `${req.user.email} demoted ${user.email} to user`,
+      target: { type: 'user', id: user._id, name: user.name }, company: user.company });
     res.json({ success: true, message: `${user.name} is now a regular User`, user });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ✅ UPDATE admin permissions
+exports.updateAdminPermissions = async (req, res) => {
+  try {
+    const { permissions } = req.body;
+    if (!permissions || typeof permissions !== 'object') {
+      return res.status(400).json({ success: false, message: 'permissions object required' });
+    }
+    const allowed = ['manageUsers','changePlans','viewAllPosts','deletePosts','manageBilling','viewAuditLog'];
+    const safe = {};
+    for (const k of allowed) if (k in permissions) safe[`permissions.${k}`] = !!permissions[k];
+
+    const target = await User.findById(req.params.id);
+    if (!target) return res.status(404).json({ success: false, message: 'User not found' });
+    if (target.role === 'superadmin') return res.status(403).json({ success: false, message: 'Cannot modify superadmin permissions' });
+
+    const updated = await User.findByIdAndUpdate(req.params.id, { $set: safe }, { new: true }).select('-password');
+
+    audit.log({ req, action: 'admin.permissions.updated', category: 'admin',
+      description: `${req.user.email} updated permissions for ${updated.email}`,
+      target: { type: 'user', id: updated._id, name: updated.name },
+      metadata: { permissions: updated.permissions }, company: updated.company });
+
+    res.json({ success: true, message: 'Permissions updated', user: updated });
+  } catch (e) {
+    res.status(500).json({ success: false, message: e.message });
   }
 };
 
