@@ -5,10 +5,15 @@ const { templates, getCompanyInfo } = require('./email.templates');
 class EmailService {
 
   _getTransporter() {
+    const port = Number(process.env.EMAIL_PORT) || 587;
+    // EMAIL_SECURE override OR auto: 465 = SSL, others = STARTTLS
+    const secure = process.env.EMAIL_SECURE
+      ? process.env.EMAIL_SECURE === 'true'
+      : port === 465;
     return nodemailer.createTransport({
       host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-      port: Number(process.env.EMAIL_PORT) || 587,
-      secure: false,
+      port,
+      secure,
       auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
       tls: { rejectUnauthorized: false }
     });
@@ -16,8 +21,9 @@ class EmailService {
 
   async sendEmail({ to, subject, html, text }) {
     try {
-      if (!process.env.EMAIL_USER || process.env.EMAIL_USER === 'your_gmail@gmail.com') {
-        logger.warn(`[DEV MODE] Email not sent. To: ${to} | Subject: ${subject}`);
+      const placeholderUsers = ['your_gmail@gmail.com', '', undefined, null];
+      if (placeholderUsers.includes(process.env.EMAIL_USER) || !process.env.EMAIL_PASS || process.env.EMAIL_PASS === 'xxxx_xxxx_xxxx_xxxx') {
+        logger.warn(`[DEV MODE] Email not sent (creds missing). To: ${to} | Subject: ${subject}`);
         return { success: true, dev: true };
       }
       const transporter = this._getTransporter();
