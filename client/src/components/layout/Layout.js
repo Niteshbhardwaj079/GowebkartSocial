@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { logout } from '../../store';
@@ -30,23 +30,41 @@ const MOB_NAV = [
   { to:'/settings',  icon:'⚙️', label:'More'   },
 ];
 
+const dropdownItemStyle = {
+  display:'flex', alignItems:'center', gap:10, padding:'10px 16px',
+  fontSize:13, color:'var(--text)', textDecoration:'none', cursor:'pointer',
+  transition:'background 0.1s',
+};
+
 export default function Layout() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useSelector(s => s.auth);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef(null);
   
   // Company branding
   const company     = user?.company;
   const companyLogo = company?.logo || null;
   const companyName = company?.name || 'GowebkartSocial';
 
-  useEffect(() => { setSidebarOpen(false); }, [location.pathname]);
+  useEffect(() => { setSidebarOpen(false); setUserMenuOpen(false); }, [location.pathname]);
   useEffect(() => {
     document.body.style.overflow = sidebarOpen ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
   }, [sidebarOpen]);
+
+  // Close user dropdown when clicking outside
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const onClick = (e) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) setUserMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [userMenuOpen]);
 
   const handleLogout = () => { dispatch(logout()); navigate('/login'); };
   const initials  = user?.name?.split(' ').map(n=>n[0]).join('').toUpperCase().slice(0,2)||'U';
@@ -167,6 +185,110 @@ export default function Layout() {
             <NavLink to="/notifications" className="btn btn-ghost btn-sm" style={{padding:'6px 8px'}}>🔔</NavLink>
             <NavLink to="/inbox"  className="btn btn-ghost btn-sm"  style={{padding:'6px 8px'}}>📬</NavLink>
             <NavLink to="/create" className="btn btn-primary btn-sm">+ Post</NavLink>
+
+            {/* User dropdown */}
+            <div ref={userMenuRef} style={{ position:'relative' }}>
+              <button
+                type="button"
+                onClick={() => setUserMenuOpen(o => !o)}
+                aria-label="User menu"
+                style={{
+                  display:'flex', alignItems:'center', gap:8, padding:'4px 10px 4px 4px',
+                  background: userMenuOpen ? 'var(--bg3)' : 'transparent',
+                  border: '1px solid ' + (userMenuOpen ? 'var(--border)' : 'transparent'),
+                  borderRadius: 999, cursor:'pointer',
+                  transition:'all 0.15s',
+                }}
+              >
+                <div style={{
+                  width:30, height:30, borderRadius:'50%',
+                  background:'linear-gradient(135deg,#0066cc,#0099ff)',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  color:'#fff', fontWeight:800, fontSize:12, flexShrink:0,
+                }}>{initials}</div>
+                <span style={{
+                  fontSize:13, fontWeight:600, color:'var(--text)',
+                  maxWidth:120, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+                }} className="hide-on-mobile">{user?.name?.split(' ')[0] || 'User'}</span>
+                <span style={{ fontSize:10, color:'var(--muted)' }}>▼</span>
+              </button>
+
+              {userMenuOpen && (
+                <div style={{
+                  position:'absolute', top:'calc(100% + 8px)', right:0,
+                  minWidth:280, maxWidth:320,
+                  background:'#fff', border:'1px solid var(--border)',
+                  borderRadius:12, boxShadow:'0 8px 30px rgba(0,0,0,0.12)',
+                  zIndex: 500, overflow:'hidden',
+                  animation:'fadeIn 0.15s ease',
+                }}>
+                  {/* User header */}
+                  <div style={{ padding:'14px 16px', background:'linear-gradient(135deg,#f8faff,#f0f7ff)', borderBottom:'1px solid var(--border)' }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                      <div style={{
+                        width:42, height:42, borderRadius:'50%',
+                        background:'linear-gradient(135deg,#0066cc,#0099ff)',
+                        display:'flex', alignItems:'center', justifyContent:'center',
+                        color:'#fff', fontWeight:800, fontSize:15, flexShrink:0,
+                      }}>{initials}</div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:13, fontWeight:700, color:'var(--text)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user?.name || 'User'}</div>
+                        <div style={{ fontSize:11, color:'var(--muted)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{user?.email}</div>
+                      </div>
+                    </div>
+                    <div style={{ display:'flex', gap:6, marginTop:8 }}>
+                      <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:20, background:'#e8f0ff', color:'#0066cc', textTransform:'uppercase' }}>
+                        💎 {user?.plan || 'free'}
+                      </span>
+                      {user?.role && user.role !== 'user' && (
+                        <span style={{ fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:20,
+                          background: user.role === 'superadmin' ? '#fff3e8' : '#f0f7ff',
+                          color:      user.role === 'superadmin' ? '#dd8800' : '#0066cc',
+                          textTransform:'uppercase' }}>
+                          {user.role === 'superadmin' ? '👑 Super Admin' : '🛠️ Admin'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Company section */}
+                  {company && (
+                    <div style={{ padding:'12px 16px', borderBottom:'1px solid var(--border)' }}>
+                      <div style={{ fontSize:10, fontWeight:700, color:'var(--muted)', textTransform:'uppercase', letterSpacing:'0.05em', marginBottom:6 }}>Company</div>
+                      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                        {companyLogo ? (
+                          <img src={companyLogo} alt={companyName} style={{ width:32, height:32, borderRadius:8, objectFit:'contain', background:'#f8faff', border:'1px solid var(--border)', flexShrink:0 }} />
+                        ) : (
+                          <div style={{ width:32, height:32, borderRadius:8, background:'#f0f7ff', display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, flexShrink:0 }}>🏢</div>
+                        )}
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:13, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{companyName}</div>
+                          {(company.city || company.state) && (
+                            <div style={{ fontSize:11, color:'var(--muted)' }}>📍 {[company.city, company.state].filter(Boolean).join(', ')}</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Quick links */}
+                  <div style={{ padding:'6px 0' }}>
+                    <NavLink to="/company"  onClick={() => setUserMenuOpen(false)} style={dropdownItemStyle}>🏢 <span>Company Profile</span></NavLink>
+                    <NavLink to="/settings" onClick={() => setUserMenuOpen(false)} style={dropdownItemStyle}>⚙️ <span>Settings</span></NavLink>
+                    <NavLink to="/plans"    onClick={() => setUserMenuOpen(false)} style={dropdownItemStyle}>💎 <span>Plans & Billing</span></NavLink>
+                  </div>
+
+                  {/* Logout */}
+                  <div style={{ borderTop:'1px solid var(--border)', padding:'6px 0' }}>
+                    <button
+                      type="button"
+                      onClick={() => { setUserMenuOpen(false); handleLogout(); }}
+                      style={{ ...dropdownItemStyle, width:'100%', background:'transparent', border:'none', textAlign:'left', cursor:'pointer', color:'#e53e3e', fontWeight:600 }}
+                    >🚪 <span>Logout</span></button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
         <Outlet />

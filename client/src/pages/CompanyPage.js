@@ -7,7 +7,6 @@ const companyAPI = {
   get:          ()  => api.get('/company'),
   update:       (d) => api.put('/company', d),
   uploadLogo:   (f) => { const fd = new FormData(); fd.append('logo', f);   return api.post('/company/logo',   fd, { headers: { 'Content-Type': 'multipart/form-data' } }); },
-  uploadBanner: (f) => { const fd = new FormData(); fd.append('banner', f); return api.post('/company/banner', fd, { headers: { 'Content-Type': 'multipart/form-data' } }); },
 };
 
 export default function CompanyPage() {
@@ -16,10 +15,8 @@ export default function CompanyPage() {
   const [loading,  setLoading]  = useState(true);
   const [saving,   setSaving]   = useState(false);
   const [logoUp,   setLogoUp]   = useState(false);
-  const [bannerUp, setBannerUp] = useState(false);
   const [form,     setForm]     = useState({});
   const logoRef   = useRef();
-  const bannerRef = useRef();
 
   useEffect(() => {
     companyAPI.get()
@@ -56,18 +53,6 @@ export default function CompanyPage() {
     finally { setLogoUp(false); }
   };
 
-  const handleBannerUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    setBannerUp(true);
-    try {
-      const res = await companyAPI.uploadBanner(file);
-      setCompany(c => ({ ...c, branding: { ...(c.branding || {}), bannerImage: res.data.banner } }));
-      toast.success('✅ Banner uploaded!');
-    } catch { toast.error('Banner upload failed'); }
-    finally { setBannerUp(false); }
-  };
-
   if (loading) return <div className="page"><div style={{ padding: 40, color: 'var(--muted)' }}>⟳ Loading...</div></div>;
 
   return (
@@ -80,21 +65,6 @@ export default function CompanyPage() {
         <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
           {saving ? '⟳ Saving...' : '💾 Save Changes'}
         </button>
-      </div>
-
-      {/* Banner */}
-      <div style={{ position: 'relative', borderRadius: 'var(--radius)', overflow: 'hidden', marginBottom: 24, height: 160, background: form.branding?.primaryColor ? `linear-gradient(135deg, ${form.branding.primaryColor}, ${form.branding.secondaryColor || '#0099ff'})` : 'linear-gradient(135deg, #0066cc, #0099ff)', cursor: 'pointer' }}
-        onClick={() => bannerRef.current?.click()}>
-        {company?.branding?.bannerImage && (
-          <img src={company.branding.bannerImage} alt="banner" style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', inset: 0 }} />
-        )}
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)' }}>
-          <div style={{ color: '#fff', textAlign: 'center' }}>
-            <div style={{ fontSize: 28, marginBottom: 4 }}>{bannerUp ? '⟳' : '🖼️'}</div>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>{bannerUp ? 'Uploading...' : 'Click to change banner'}</div>
-          </div>
-        </div>
-        <input ref={bannerRef} type="file" accept="image/*" onChange={handleBannerUpload} style={{ display: 'none' }} />
       </div>
 
       <div className="grid grid-2">
@@ -183,35 +153,6 @@ export default function CompanyPage() {
 
         {/* Right column */}
         <div>
-          {/* Branding Colors */}
-          <div className="card mb-4">
-            <div className="card-title mb-4">🎨 Brand Colors</div>
-            <div className="grid grid-2">
-              <div className="form-group">
-                <label className="form-label">Primary Color</label>
-                <div className="flex gap-2 items-center">
-                  <input type="color" value={form.branding?.primaryColor || '#0066cc'} onChange={setBranding('primaryColor')} style={{ width: 44, height: 40, border: '1.5px solid var(--border)', borderRadius: 8, cursor: 'pointer', background: 'white' }} />
-                  <input className="form-input" value={form.branding?.primaryColor || '#0066cc'} onChange={setBranding('primaryColor')} placeholder="#0066cc" />
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Secondary Color</label>
-                <div className="flex gap-2 items-center">
-                  <input type="color" value={form.branding?.secondaryColor || '#0099ff'} onChange={setBranding('secondaryColor')} style={{ width: 44, height: 40, border: '1.5px solid var(--border)', borderRadius: 8, cursor: 'pointer', background: 'white' }} />
-                  <input className="form-input" value={form.branding?.secondaryColor || '#0099ff'} onChange={setBranding('secondaryColor')} placeholder="#0099ff" />
-                </div>
-              </div>
-            </div>
-
-            {/* Color preview */}
-            <div style={{ borderRadius: 10, overflow: 'hidden', marginTop: 8 }}>
-              <div style={{ background: `linear-gradient(135deg, ${form.branding?.primaryColor || '#0066cc'}, ${form.branding?.secondaryColor || '#0099ff'})`, padding: '16px 20px', color: '#fff' }}>
-                <div style={{ fontWeight: 700, fontSize: 14 }}>{form.name || 'Your Company'}</div>
-                <div style={{ fontSize: 11, opacity: 0.85, marginTop: 2 }}>{form.branding?.tagline || 'Your tagline here'}</div>
-              </div>
-            </div>
-          </div>
-
           {/* Social Links */}
           <div className="card mb-4">
             <div className="card-title mb-4">🔗 Social Media Links</div>
