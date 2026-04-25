@@ -1,5 +1,5 @@
 const express     = require('express');
-const { protect } = require('../middleware/auth.middleware');
+const { protect, authorize, requirePlan } = require('../middleware/auth.middleware');
 const { Post, User, SocialAccount } = require('../models');
 const aiService   = require('../services/ai/ai.service');
 
@@ -340,7 +340,7 @@ socialRouter.get('/callback/facebook', async (req, res) => {
 const adsRouter    = express.Router();
 const adsService   = require('../services/ads/ads.service');
 const { AdCampaign } = require('../models');
-const { requirePlan, authorize } = require('../middleware/auth.middleware');
+// requirePlan + authorize are imported at top of file
 
 adsRouter.get('/accounts', protect, requirePlan('basic','pro'), async (req, res) => {
   try {
