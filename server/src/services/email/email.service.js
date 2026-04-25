@@ -63,6 +63,20 @@ class EmailService {
     return this.sendEmail({ to, ...t });
   }
 
+  async sendInvoice(to, payload) {
+    // payload: { name, email, plan, billingCycle, amount, invoiceNumber, paymentId, orderId, paidAt, startDate, endDate, company }
+    const expiryTemplates = require('./expiry.templates');
+    const t = expiryTemplates.invoice(payload);
+    return this.sendEmail({ to, ...t });
+  }
+
+  async sendPaymentFailed(to, payload) {
+    // payload: { name, plan, amount, orderId, reason, company }
+    const expiryTemplates = require('./expiry.templates');
+    const t = expiryTemplates.paymentFailed(payload);
+    return this.sendEmail({ to, ...t });
+  }
+
   async sendTagAlert({ to, userName, taggedBy, platform, content, accountName, userId }) {
     const company = await getCompanyInfo(userId);
     const t = templates.tagAlert({ name: userName, taggedBy, platform, content, accountName, company });

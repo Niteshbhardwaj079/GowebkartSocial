@@ -106,6 +106,18 @@ export const adminAPI = {
   deleteUser:   id             => api.delete(`/admin/users/${id}`),
 };
 
+export const paymentAPI = {
+  // Used by both admin and superadmin (backend auto-scopes by role)
+  listAll:  p => api.get('/payment/admin/payments', { params: p }),
+  // Open invoice HTML in a new tab (token-aware)
+  openInvoice: id => {
+    const url = `${process.env.REACT_APP_API_URL || ''}/api/payment/invoice/${id}`;
+    fetch(url, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
+      .then(r => r.text())
+      .then(html => { const w = window.open('', '_blank'); w.document.write(html); w.document.close(); });
+  },
+};
+
 export const auditAPI = {
   // SuperAdmin
   list:           p => api.get('/audit',           { params: p }),

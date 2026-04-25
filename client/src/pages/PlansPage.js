@@ -222,18 +222,47 @@ export default function PlansPage() {
           ) : (
             <div className="table-wrap">
               <table>
-                <thead><tr><th>Date</th><th>Plan</th><th>Billing</th><th>Amount</th><th>Order ID</th><th>Status</th></tr></thead>
+                <thead><tr><th>Date</th><th>Invoice #</th><th>Plan</th><th>Billing</th><th>Amount</th><th>Status</th><th>Action</th></tr></thead>
                 <tbody>
-                  {history.map(p => (
-                    <tr key={p._id}>
-                      <td style={{ fontSize:12, color:'var(--muted)' }}>{new Date(p.paidAt).toLocaleDateString('en-IN')}</td>
-                      <td><strong style={{ textTransform:'uppercase' }}>{p.plan}</strong></td>
-                      <td style={{ fontSize:12, textTransform:'capitalize' }}>{p.billingCycle}</td>
-                      <td><strong style={{ color:'var(--success)' }}>₹{p.amount}</strong></td>
-                      <td style={{ fontSize:10, fontFamily:'monospace', color:'var(--muted)' }}>{p.razorpayOrderId?.slice(-10)}</td>
-                      <td><span style={{ fontSize:10, background:'#e8fff5', color:'var(--success)', border:'1px solid #b3f0d8', padding:'2px 7px', borderRadius:20, fontWeight:700 }}>✅ Paid</span></td>
-                    </tr>
-                  ))}
+                  {history.map(p => {
+                    const isPaid = p.status === 'paid';
+                    const date = p.paidAt || p.createdAt;
+                    return (
+                      <tr key={p._id} style={{ opacity: isPaid ? 1 : 0.85 }}>
+                        <td style={{ fontSize:12, color:'var(--muted)' }}>{new Date(date).toLocaleDateString('en-IN', { day:'numeric', month:'short', year:'numeric' })}</td>
+                        <td style={{ fontSize:11, fontFamily:'monospace', color: isPaid ? 'var(--text)' : 'var(--muted)' }}>{p.invoiceNumber || '—'}</td>
+                        <td><strong style={{ textTransform:'uppercase' }}>{p.plan}</strong></td>
+                        <td style={{ fontSize:12, textTransform:'capitalize' }}>{p.billingCycle}</td>
+                        <td><strong style={{ color: isPaid ? 'var(--success)' : 'var(--muted)' }}>₹{p.amount}</strong></td>
+                        <td>
+                          {isPaid ? (
+                            <span style={{ fontSize:10, background:'#e8fff5', color:'var(--success)', border:'1px solid #b3f0d8', padding:'2px 7px', borderRadius:20, fontWeight:700 }}>✅ Paid</span>
+                          ) : p.status === 'failed' ? (
+                            <span style={{ fontSize:10, background:'#fff0f0', color:'#e53e3e', border:'1px solid #ffcccc', padding:'2px 7px', borderRadius:20, fontWeight:700 }} title={p.failureReason || ''}>❌ Failed</span>
+                          ) : (
+                            <span style={{ fontSize:10, background:'#f8faff', color:'var(--muted)', border:'1px solid var(--border)', padding:'2px 7px', borderRadius:20, fontWeight:700 }}>⏳ {p.status}</span>
+                          )}
+                        </td>
+                        <td>
+                          {isPaid && p.invoiceNumber && (
+                            <a href={`${process.env.REACT_APP_API_URL || ''}/api/payment/invoice/${p._id}?t=${localStorage.getItem('token')}`}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                fetch(`${process.env.REACT_APP_API_URL || ''}/api/payment/invoice/${p._id}`, {
+                                  headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+                                }).then(r => r.text()).then(html => {
+                                  const w = window.open('', '_blank');
+                                  w.document.write(html);
+                                  w.document.close();
+                                });
+                              }}
+                              className="btn btn-sm btn-secondary" style={{ fontSize:11 }}
+                            >🧾 Invoice</a>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

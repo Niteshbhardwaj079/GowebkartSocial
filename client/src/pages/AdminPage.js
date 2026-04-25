@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux';
 import { toast } from 'react-toastify';
 import api from '../services/api';
 import ActivityLog from '../components/common/ActivityLog';
+import PaymentsTable from '../components/common/PaymentsTable';
 
 const adminAPI = {
   getUsers:    ()          => api.get('/admin/users'),
@@ -106,6 +107,7 @@ export default function AdminPage() {
       <div style={{ display:'flex', gap:4, marginBottom:20, background:'var(--bg3)', padding:4, borderRadius:'var(--radius2)', border:'1px solid var(--border)', width:'fit-content' }}>
         {[
           { id:'users',    icon:'👥', label:'Users' },
+          { id:'payments', icon:'💳', label:'Payments' },
           { id:'activity', icon:'📜', label:'Activity Log' },
         ].map(t => (
           <button key={t.id} className={`btn btn-sm ${tab===t.id ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setTab(t.id)}>
@@ -114,6 +116,7 @@ export default function AdminPage() {
         ))}
       </div>
 
+      {tab === 'payments' && <PaymentsTable />}
       {tab === 'activity' && <ActivityLog scope="company" showSettings={false} />}
 
       {tab === 'users' && <>

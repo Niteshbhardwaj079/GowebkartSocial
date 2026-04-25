@@ -5,6 +5,7 @@ import { toast } from 'react-toastify';
 import api from '../services/api';
 import PasswordInput from '../components/common/PasswordInput';
 import ActivityLog from '../components/common/ActivityLog';
+import PaymentsTable from '../components/common/PaymentsTable';
 
 const SA = {
   getStats:     ()         => api.get('/superadmin/stats'),
@@ -292,6 +293,7 @@ export default function SuperAdminPage() {
     { id: 'users',     icon: '👥', label: 'Users'     },
     { id: 'admins',    icon: '👑', label: 'Admins'    },
     { id: 'plans',     icon: '💎', label: 'Plans'     },
+    { id: 'payments',  icon: '💳', label: 'Payments'  },
     { id: 'audit',     icon: '📜', label: 'Activity Log' },
   ];
 
@@ -600,6 +602,9 @@ export default function SuperAdminPage() {
             </div>
           </div>
         )}
+
+        {/* ─── PAYMENTS ─── */}
+        {tab === 'payments' && <PaymentsTable />}
 
         {/* ─── ACTIVITY LOG ─── */}
         {tab === 'audit' && (

@@ -139,6 +139,128 @@ const expiryTemplates = {
       `
     })
   }),
+
+  // ── Invoice (sent on payment success) ──
+  invoice: ({ name, email, plan, billingCycle, amount, invoiceNumber, paymentId, orderId, paidAt, startDate, endDate, company }) => {
+    const subtotal = +(amount / 1.18).toFixed(2);
+    const gst      = +(amount - subtotal).toFixed(2);
+    const dateStr  = new Date(paidAt || Date.now()).toLocaleString('en-IN', { dateStyle: 'long', timeStyle: 'short' });
+    return {
+      subject: `🧾 Invoice ${invoiceNumber} — ${plan.toUpperCase()} Plan | ${company?.name || 'GowebkartSocial'}`,
+      html: `
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>${invoiceNumber}</title></head>
+<body style="margin:0;padding:24px;background:#f8faff;font-family:Inter,Arial,sans-serif;color:#1a2332;">
+  <div style="max-width:680px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;">
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#0066cc,#0099ff);color:#fff;padding:28px 32px;display:flex;justify-content:space-between;align-items:flex-start;">
+      <div>
+        <div style="font-size:12px;letter-spacing:2px;opacity:0.85;font-weight:600;">TAX INVOICE</div>
+        <div style="font-size:22px;font-weight:800;margin-top:4px;">${invoiceNumber}</div>
+        <div style="font-size:11px;opacity:0.9;margin-top:4px;">Issued: ${dateStr}</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:18px;font-weight:800;">GowebkartSocial</div>
+        <div style="font-size:11px;opacity:0.85;">by Gowebkart</div>
+      </div>
+    </div>
+
+    <!-- Bill to + From -->
+    <div style="display:flex;padding:24px 32px;border-bottom:1px solid #e2e8f0;">
+      <div style="flex:1;">
+        <div style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:1px;">BILLED TO</div>
+        <div style="font-size:14px;font-weight:700;margin-top:6px;">${name}</div>
+        <div style="font-size:12px;color:#64748b;margin-top:2px;">${email}</div>
+        ${company?.name ? `<div style="font-size:12px;color:#64748b;margin-top:2px;">${company.name}</div>` : ''}
+      </div>
+      <div style="flex:1;text-align:right;">
+        <div style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:1px;">PAYMENT METHOD</div>
+        <div style="font-size:13px;font-weight:600;margin-top:6px;">Razorpay (Online)</div>
+        <div style="font-size:10px;color:#64748b;margin-top:2px;font-family:monospace;">Order: ${orderId?.slice(-14) || '—'}</div>
+        <div style="font-size:10px;color:#64748b;font-family:monospace;">Payment: ${paymentId?.slice(-14) || '—'}</div>
+      </div>
+    </div>
+
+    <!-- Items -->
+    <div style="padding:0 32px;">
+      <table style="width:100%;border-collapse:collapse;margin:20px 0;">
+        <thead>
+          <tr style="background:#f8faff;border-bottom:2px solid #0066cc;">
+            <th style="text-align:left;padding:12px 8px;font-size:11px;font-weight:700;color:#64748b;letter-spacing:0.5px;">DESCRIPTION</th>
+            <th style="text-align:center;padding:12px 8px;font-size:11px;font-weight:700;color:#64748b;letter-spacing:0.5px;">CYCLE</th>
+            <th style="text-align:right;padding:12px 8px;font-size:11px;font-weight:700;color:#64748b;letter-spacing:0.5px;">AMOUNT</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom:1px solid #f0f4f8;">
+            <td style="padding:14px 8px;">
+              <div style="font-weight:700;">${plan.toUpperCase()} Plan Subscription</div>
+              <div style="font-size:11px;color:#64748b;margin-top:2px;">Valid: ${new Date(startDate).toLocaleDateString('en-IN')} → ${new Date(endDate).toLocaleDateString('en-IN')}</div>
+            </td>
+            <td style="text-align:center;padding:14px 8px;font-size:13px;text-transform:capitalize;">${billingCycle}</td>
+            <td style="text-align:right;padding:14px 8px;font-weight:700;">₹${subtotal.toFixed(2)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- Totals -->
+      <table style="width:60%;margin-left:auto;border-collapse:collapse;margin-bottom:24px;">
+        <tr><td style="padding:6px 8px;font-size:13px;color:#64748b;">Subtotal</td><td style="padding:6px 8px;text-align:right;font-weight:600;">₹${subtotal.toFixed(2)}</td></tr>
+        <tr><td style="padding:6px 8px;font-size:13px;color:#64748b;">GST @ 18%</td><td style="padding:6px 8px;text-align:right;font-weight:600;">₹${gst.toFixed(2)}</td></tr>
+        <tr style="border-top:2px solid #1a2332;"><td style="padding:10px 8px;font-size:14px;font-weight:800;">Total Paid</td><td style="padding:10px 8px;text-align:right;font-size:18px;font-weight:900;color:#00b86b;">₹${amount.toFixed(2)}</td></tr>
+      </table>
+    </div>
+
+    <!-- Status banner -->
+    <div style="margin:0 32px 24px;background:linear-gradient(135deg,#f0fff8,#e8fff5);border:1.5px solid #b3f0d8;border-radius:10px;padding:14px 18px;display:flex;justify-content:space-between;align-items:center;">
+      <div>
+        <div style="font-size:12px;color:#38a169;font-weight:700;">✅ PAID & ACTIVATED</div>
+        <div style="font-size:11px;color:#64748b;margin-top:2px;">Plan active till ${new Date(endDate).toLocaleDateString('en-IN', {day:'numeric',month:'long',year:'numeric'})}</div>
+      </div>
+      <div style="font-size:32px;">🎉</div>
+    </div>
+
+    <!-- Footer -->
+    <div style="padding:18px 32px;background:#f8faff;border-top:1px solid #e2e8f0;font-size:11px;color:#64748b;">
+      <div style="margin-bottom:6px;">Yeh ek system-generated invoice hai — manually signed nahi hai. Koi sawal ho to <strong>support@gowebkart.in</strong> par contact karein.</div>
+      <div>Thank you for choosing <strong>GowebkartSocial</strong>! 🙏</div>
+    </div>
+  </div>
+</body></html>
+      `,
+    };
+  },
+
+  // ── Payment Failed (sent when signature/verify fails) ──
+  paymentFailed: ({ name, plan, amount, orderId, reason, company }) => ({
+    subject: `❌ Payment Failed — ${plan.toUpperCase()} Plan | ${company?.name || 'GowebkartSocial'}`,
+    html: baseTemplate({
+      company,
+      title: 'Payment Could Not Be Verified',
+      preheader: `₹${amount} payment for ${plan} plan failed verification.`,
+      body: `
+        <div style="font-size:20px;font-weight:800;margin-bottom:8px;">❌ Payment Failed</div>
+        <p>Namaste <strong>${name}</strong>,</p>
+        <p>Aapka <strong>${plan.toUpperCase()} Plan</strong> ka payment <strong>verify nahi ho saka</strong>.</p>
+
+        <div style="background:#fff0f0;border:2px solid #ffcccc;border-radius:14px;padding:18px;margin:18px 0;">
+          <table style="width:100%;border-collapse:collapse;">
+            <tr><td style="padding:6px 0;color:#6b7c93;font-size:13px;">Order ID</td><td style="padding:6px 0;font-family:monospace;font-weight:700;text-align:right;">${orderId || '—'}</td></tr>
+            <tr><td style="padding:6px 0;color:#6b7c93;font-size:13px;">Amount</td><td style="padding:6px 0;font-weight:700;text-align:right;">₹${amount}</td></tr>
+            ${reason ? `<tr><td style="padding:6px 0;color:#6b7c93;font-size:13px;">Reason</td><td style="padding:6px 0;font-size:12px;text-align:right;">${reason}</td></tr>` : ''}
+          </table>
+        </div>
+
+        <div style="background:#f0f7ff;border-left:4px solid #0066cc;border-radius:8px;padding:14px;margin:16px 0;">
+          <p style="margin:0;font-size:13px;"><strong>💡 Agar paise kat gaye hain</strong> — chinta na karein. 5-7 working days me Razorpay refund kar dega. Agar nahi aaye to support se contact karein order ID ke saath.</p>
+        </div>
+
+        <div style="text-align:center;margin:24px 0;">
+          <a href="${process.env.CLIENT_URL || '#'}/plans" style="display:inline-block;background:linear-gradient(135deg,#0066cc,#0099ff);color:#fff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:800;">🔄 Phir Try Karein</a>
+        </div>
+      `
+    })
+  })
 };
 
 module.exports = expiryTemplates;

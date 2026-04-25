@@ -104,11 +104,29 @@ router.post('/verify', protect, async (req, res) => {
     });
 
     if (!isValid) {
-      await Payment.findOneAndUpdate({ razorpayOrderId }, { status: 'failed' });
+      const failureReason = 'Razorpay signature mismatch';
+      const failed = await Payment.findOneAndUpdate(
+        { razorpayOrderId },
+        { status: 'failed', razorpayPaymentId, failureReason },
+        { new: true }
+      );
+      audit.log({ req, action: 'payment.failed', category: 'payment',
+        description: `Payment verification failed: ${failureReason}`,
+        target: { type: 'payment', id: failed?._id, name: razorpayOrderId },
+        metadata: { amount: failed?.amount, plan: failed?.plan, reason: failureReason } });
+      // Notify user
+      if (failed) {
+        const tmpl = expiryTemplates.paymentFailed({
+          name: req.user.name, plan: failed.plan, amount: failed.amount,
+          orderId: razorpayOrderId, reason: failureReason, company: req.user.company,
+        });
+        emailService.sendEmail({ to: req.user.email, ...tmpl }).catch(() => {});
+      }
       return res.status(400).json({ success: false, message: '❌ Payment verification failed. Please contact support.' });
     }
 
     // Payment record update karo (only if it belongs to the logged-in user & not already paid)
+    const invoiceNumber = await Payment.generateInvoiceNumber();
     const payment = await Payment.findOneAndUpdate(
       { razorpayOrderId, user: req.user._id, status: { $ne: 'paid' } },
       {
@@ -116,6 +134,7 @@ router.post('/verify', protect, async (req, res) => {
         razorpaySignature,
         status: 'paid',
         paidAt: new Date(),
+        invoiceNumber,
       },
       { new: true }
     );
@@ -134,17 +153,21 @@ router.post('/verify', protect, async (req, res) => {
       orderId:     razorpayOrderId,
     });
 
-    // Payment success email bhejo
-    const template = expiryTemplates.paymentSuccess({
-      name:      req.user.name,
-      plan:      payment.plan,
-      amount:    payment.amount,
-      orderId:   razorpayOrderId,
-      startDate: sub.startDate,
-      endDate:   sub.endDate,
-      company:   req.user.company,
-    });
-    await emailService.sendEmail({ to: req.user.email, ...template });
+    // Send proper invoice email (rich HTML, GST breakdown, branded)
+    emailService.sendInvoice(req.user.email, {
+      name:           req.user.name,
+      email:          req.user.email,
+      plan:           payment.plan,
+      billingCycle:   payment.billingCycle,
+      amount:         payment.amount,
+      invoiceNumber:  payment.invoiceNumber,
+      paymentId:      razorpayPaymentId,
+      orderId:        razorpayOrderId,
+      paidAt:         payment.paidAt,
+      startDate:      sub.startDate,
+      endDate:        sub.endDate,
+      company:        req.user.company,
+    }).catch(() => {});
 
     logger.info(`✅ Payment verified & plan activated: ${req.user.email} → ${plan}`);
     audit.log({ req, action: 'payment.completed', category: 'payment',
@@ -175,25 +198,82 @@ router.get('/subscription', protect, async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-// ── Payment history ──
+// ── Payment history (own — paid + failed) ──
 router.get('/history', protect, async (req, res) => {
   try {
-    const payments = await Payment.find({ user: req.user._id, status: 'paid' }).sort({ paidAt: -1 });
+    const { status } = req.query;
+    const filter = { user: req.user._id };
+    if (status && status !== 'all') filter.status = status;
+    else                            filter.status = { $in: ['paid', 'failed'] };
+    const payments = await Payment.find(filter).sort({ createdAt: -1 });
     res.json({ success: true, payments });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-// ── ADMIN: All payments ──
+// ── Invoice HTML view (printable) ──
+router.get('/invoice/:id', protect, async (req, res) => {
+  try {
+    const filter = { _id: req.params.id };
+    // Non-superadmin can only view own invoice
+    if (req.user.role !== 'superadmin') filter.user = req.user._id;
+
+    const payment = await Payment.findOne(filter).populate('user', 'name email').populate('company', 'name');
+    if (!payment) return res.status(404).send('<h2>Invoice not found</h2>');
+    if (payment.status !== 'paid' || !payment.invoiceNumber) {
+      return res.status(400).send('<h2>This payment has no invoice — only successful payments are invoiced.</h2>');
+    }
+
+    const sub = await expiryService.getSubscription(payment.user._id);
+    const tmpl = expiryTemplates.invoice({
+      name:          payment.user.name,
+      email:         payment.user.email,
+      plan:          payment.plan,
+      billingCycle:  payment.billingCycle,
+      amount:        payment.amount,
+      invoiceNumber: payment.invoiceNumber,
+      paymentId:     payment.razorpayPaymentId,
+      orderId:       payment.razorpayOrderId,
+      paidAt:        payment.paidAt,
+      startDate:     sub?.startDate || payment.paidAt,
+      endDate:       sub?.endDate   || payment.paidAt,
+      company:       payment.company,
+    });
+
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.send(tmpl.html);
+  } catch (e) { logger.error(e.message); res.status(500).send('<h2>Error loading invoice</h2>'); }
+});
+
+// ── ADMIN/SUPERADMIN: All payments (filter by status, include failed) ──
 router.get('/admin/payments', protect, adminOnly, async (req, res) => {
   try {
-    const { page = 1, limit = 20 } = req.query;
-    const payments = await Payment.find({ status: 'paid' })
+    const { page = 1, limit = 20, status, search } = req.query;
+    const filter = {};
+    // SuperAdmin sees all; admin sees only their company
+    if (req.user.role === 'admin') {
+      filter.company = req.user.company?._id || req.user.company;
+    }
+    if (status && status !== 'all') filter.status = status;
+    if (search) {
+      const users = await require('../models').User.find({
+        $or: [{ name: { $regex: search, $options: 'i' } }, { email: { $regex: search, $options: 'i' } }]
+      }).select('_id').lean();
+      filter.user = { $in: users.map(u => u._id) };
+    }
+
+    const payments = await Payment.find(filter)
       .populate('user', 'name email')
-      .sort({ paidAt: -1 })
+      .populate('company', 'name')
+      .sort({ createdAt: -1 })
       .limit(Number(limit)).skip((Number(page)-1)*Number(limit));
-    const total = await Payment.countDocuments({ status: 'paid' });
-    const revenue = await Payment.aggregate([{ $match: { status:'paid' } }, { $group: { _id:null, total:{ $sum:'$amount' } } }]);
-    res.json({ success: true, payments, total, revenue: revenue[0]?.total || 0 });
+    const total   = await Payment.countDocuments(filter);
+    const revenue = await Payment.aggregate([
+      { $match: { ...filter, status: 'paid' } },
+      { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } },
+    ]);
+    const failedCount = await Payment.countDocuments({ ...filter, status: 'failed' });
+
+    res.json({ success: true, payments, total, revenue: revenue[0]?.total || 0, paidCount: revenue[0]?.count || 0, failedCount });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
