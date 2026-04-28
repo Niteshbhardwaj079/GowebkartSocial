@@ -2,6 +2,7 @@ const express     = require('express');
 const { protect, authorize, requirePlan } = require('../middleware/auth.middleware');
 const { Post, User, SocialAccount } = require('../models');
 const aiService   = require('../services/ai/ai.service');
+const socialConfig = require('../config/social');
 
 // ── POST ROUTES ──
 const postRouter = express.Router();
@@ -145,55 +146,62 @@ socialRouter.get('/diagnostics', protect, authorize('admin', 'superadmin'), (req
 
 socialRouter.get('/accounts', protect, async (req, res) => {
   try {
-    const accounts = await SocialAccount.find({ user: req.user._id, isActive: true }).select('-accessToken -refreshToken');
+    // Company-scoped: every team member sees the same set of connected
+    // accounts that the company admin connected. Demo users only see their
+    // own (so they can't piggyback on a real company's accounts).
+    const filter = req.user.isDemo
+      ? { user: req.user._id, isActive: true }
+      : { company: req.user.company?._id || req.user.company, isActive: true };
+    const accounts = await SocialAccount.find(filter).select('-accessToken -refreshToken');
     res.json({ success: true, accounts });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
 socialRouter.delete('/accounts/:id', protect, async (req, res) => {
   try {
-    await SocialAccount.findOneAndUpdate({ _id: req.params.id, user: req.user._id }, { isActive: false });
+    // Disconnect requires manageBilling permission OR admin/superadmin role.
+    // Regular team members shouldn't be able to break the company's social
+    // connections.
+    const isPrivileged = req.user.role === 'admin' || req.user.role === 'superadmin' || req.user.permissions?.manageBilling;
+    if (!isPrivileged) {
+      return res.status(403).json({ success: false, message: 'Only admins can disconnect company social accounts' });
+    }
+    const companyId = req.user.company?._id || req.user.company;
+    await SocialAccount.findOneAndUpdate(
+      { _id: req.params.id, $or: [{ company: companyId }, { user: req.user._id }] },
+      { isActive: false }
+    );
     res.json({ success: true, message: 'Account disconnected' });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-// Resolve which FB app credentials to use for a given user — prefer the
-// user's own keys (saved via API Settings), fall back to global Render env.
-async function resolveFbAppCreds(userId) {
-  try {
-    const UserApiSettings = require('../models/UserApiSettings.model');
-    const us = await UserApiSettings.findOne({ user: userId })
-      .select('+facebook.appId +facebook.appSecret');
-    if (us?.facebook?.appId && us?.facebook?.appSecret) {
-      return { appId: us.facebook.appId, appSecret: us.facebook.appSecret, source: 'user' };
-    }
-  } catch {}
-  if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_ID !== 'baad_mein' &&
-      process.env.FACEBOOK_APP_SECRET) {
-    return { appId: process.env.FACEBOOK_APP_ID, appSecret: process.env.FACEBOOK_APP_SECRET, source: 'env' };
+// Single-source social config: keys come from server/src/config/social.js
+// (which reads from env vars). No more per-user API Settings keys.
+// Only admins/superadmins can initiate Connect — team members inherit
+// the company's connected accounts and shouldn't change them.
+function ensureCanConnect(req, res) {
+  if (req.user.role !== 'admin' && req.user.role !== 'superadmin') {
+    res.status(403).json({ success: false, message: 'Only admins can connect social accounts. Apne admin se kaho.' });
+    return false;
   }
-  return null;
+  return true;
 }
 
 socialRouter.get('/facebook/connect', protect, async (req, res) => {
-  const creds = await resolveFbAppCreds(req.user._id);
-  if (!creds) {
+  if (!ensureCanConnect(req, res)) return;
+  if (!socialConfig.isConfigured('facebook')) {
     return res.status(400).json({
       success: false,
-      message: 'Facebook keys missing. API Settings me apne FB App ID/Secret save karein, ya Render env me FACEBOOK_APP_ID/FACEBOOK_APP_SECRET set karein.',
+      message: 'Facebook app credentials missing. Set FACEBOOK_APP_ID + FACEBOOK_APP_SECRET in Render env.',
     });
   }
   if (!process.env.SERVER_URL) {
     return res.status(500).json({ success: false, message: 'SERVER_URL env var missing — OAuth callback nahi banega' });
   }
   const params = new URLSearchParams({
-    client_id:    creds.appId,
-    redirect_uri: `${process.env.SERVER_URL}/api/social/callback/facebook`,
-    // public_profile + email = Login.  pages_show_list = enumerate user's Pages.
-    // pages_manage_posts/pages_read_engagement = FB page posting + insights.
-    // instagram_basic/instagram_content_publish = IG Business posting.
-    // business_management = needed for some IG Graph endpoints.
-    scope:         'public_profile,email,pages_show_list,pages_manage_posts,pages_read_engagement,instagram_basic,instagram_content_publish,business_management',
+    client_id:     socialConfig.facebook.appId,
+    redirect_uri:  `${process.env.SERVER_URL}/api/social/callback/facebook`,
+    scope:         socialConfig.facebook.scopes,
     response_type: 'code',
     state:         req.user._id.toString(),
   });
@@ -201,41 +209,28 @@ socialRouter.get('/facebook/connect', protect, async (req, res) => {
 });
 
 socialRouter.get('/twitter/connect', protect, (req, res) => {
-  if (!process.env.TWITTER_API_KEY || process.env.TWITTER_API_KEY === 'baad_mein') {
-    return res.status(400).json({ success: false, message: 'Twitter API keys add karein' });
+  if (!ensureCanConnect(req, res)) return;
+  if (!socialConfig.isConfigured('twitter')) {
+    return res.status(400).json({ success: false, message: 'Twitter app credentials missing in env' });
   }
   const params = new URLSearchParams({
-    response_type: 'code', client_id: process.env.TWITTER_API_KEY,
-    redirect_uri: `${process.env.SERVER_URL}/api/social/callback/twitter`,
-    scope: 'tweet.read tweet.write users.read offline.access',
-    state: req.user._id.toString(), code_challenge: 'challenge', code_challenge_method: 'plain'
+    response_type: 'code',
+    client_id:     socialConfig.twitter.clientId,
+    redirect_uri:  `${process.env.SERVER_URL}/api/social/callback/twitter`,
+    scope:         socialConfig.twitter.scopes,
+    state:         req.user._id.toString(),
+    code_challenge: 'challenge',
+    code_challenge_method: 'plain',
   });
   res.json({ url: `https://twitter.com/i/oauth2/authorize?${params}` });
 });
 
-// Resolve LinkedIn app creds — per-user (API Settings) preferred, env fallback
-async function resolveLinkedInCreds(userId) {
-  try {
-    const UserApiSettings = require('../models/UserApiSettings.model');
-    const us = await UserApiSettings.findOne({ user: userId })
-      .select('+linkedin.clientId +linkedin.clientSecret');
-    if (us?.linkedin?.clientId && us?.linkedin?.clientSecret) {
-      return { clientId: us.linkedin.clientId, clientSecret: us.linkedin.clientSecret, source: 'user' };
-    }
-  } catch {}
-  if (process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_ID !== 'baad_mein' &&
-      process.env.LINKEDIN_CLIENT_SECRET) {
-    return { clientId: process.env.LINKEDIN_CLIENT_ID, clientSecret: process.env.LINKEDIN_CLIENT_SECRET, source: 'env' };
-  }
-  return null;
-}
-
 socialRouter.get('/linkedin/connect', protect, async (req, res) => {
-  const creds = await resolveLinkedInCreds(req.user._id);
-  if (!creds) {
+  if (!ensureCanConnect(req, res)) return;
+  if (!socialConfig.isConfigured('linkedin')) {
     return res.status(400).json({
       success: false,
-      message: 'LinkedIn keys missing. API Settings me Client ID/Secret save karein, ya Render env me LINKEDIN_CLIENT_ID/LINKEDIN_CLIENT_SECRET set karein.',
+      message: 'LinkedIn app credentials missing. Set LINKEDIN_CLIENT_ID + LINKEDIN_CLIENT_SECRET in Render env.',
     });
   }
   if (!process.env.SERVER_URL) {
@@ -243,11 +238,9 @@ socialRouter.get('/linkedin/connect', protect, async (req, res) => {
   }
   const params = new URLSearchParams({
     response_type: 'code',
-    client_id:     creds.clientId,
+    client_id:     socialConfig.linkedin.clientId,
     redirect_uri:  `${process.env.SERVER_URL}/api/social/callback/linkedin`,
-    // openid + profile + email work with the modern "Sign In with LinkedIn using OpenID Connect" product.
-    // w_member_social = post on behalf of the member (Share on LinkedIn product).
-    scope:         'openid profile email w_member_social',
+    scope:         socialConfig.linkedin.scopes,
     state:         req.user._id.toString(),
   });
   res.json({ url: `https://www.linkedin.com/oauth/v2/authorization?${params}` });
@@ -268,23 +261,21 @@ socialRouter.get('/callback/facebook', async (req, res) => {
   }
 
   try {
-    // Use the SAME app credentials the user started OAuth with. Per-user
-    // keys (from API Settings) take priority; otherwise fall back to env.
-    // Without this, an OAuth started with user keys is rejected by the
-    // exchange call using global keys ("App ID mismatch") and the
-    // SocialAccount row never gets saved.
-    const creds = await resolveFbAppCreds(userId);
-    if (!creds) {
-      logger.warn(`FB callback: no app creds available for user ${userId}`);
+    if (!socialConfig.isConfigured('facebook')) {
       return res.redirect(`${process.env.CLIENT_URL}/accounts?error=fb&msg=${encodeURIComponent('FB app credentials missing on server')}`);
     }
-    logger.info(`FB callback using ${creds.source} keys for user ${userId}`);
+    const { appId, appSecret } = socialConfig.facebook;
+
+    // Resolve which company this user belongs to — accounts are stored
+    // company-scoped so the whole team can post through them.
+    const u = await User.findById(userId).select('company').lean();
+    const companyId = u?.company || null;
 
     // 1. Exchange code → short-lived token
     const tokenRes = await axios.get('https://graph.facebook.com/v18.0/oauth/access_token', {
       params: {
-        client_id:     creds.appId,
-        client_secret: creds.appSecret,
+        client_id:     appId,
+        client_secret: appSecret,
         redirect_uri:  `${process.env.SERVER_URL}/api/social/callback/facebook`,
         code,
       },
@@ -297,8 +288,8 @@ socialRouter.get('/callback/facebook', async (req, res) => {
       const llRes = await axios.get('https://graph.facebook.com/v18.0/oauth/access_token', {
         params: {
           grant_type:        'fb_exchange_token',
-          client_id:         creds.appId,
-          client_secret:     creds.appSecret,
+          client_id:         appId,
+          client_secret:     appSecret,
           fb_exchange_token: shortToken,
         },
       });
@@ -307,17 +298,17 @@ socialRouter.get('/callback/facebook', async (req, res) => {
       logger.warn(`FB long-lived exchange failed (will use short token): ${llErr.response?.data?.error?.message || llErr.message}`);
     }
 
-    // 3. Get the user's FB profile
     const userRes = await axios.get('https://graph.facebook.com/v18.0/me', {
       params: { fields: 'id,name,picture', access_token: longToken },
     });
     const fbUser = userRes.data;
-    const tokenExpiry = new Date(Date.now() + 55 * 24 * 60 * 60 * 1000); // ~55 days
+    const tokenExpiry = new Date(Date.now() + 55 * 24 * 60 * 60 * 1000);
 
-    // 4. Save/update the personal FB account row (bookkeeping; posting happens via Pages)
+    // Personal FB row (bookkeeping)
     await SocialAccount.findOneAndUpdate(
       { user: userId, platform: 'facebook', platformUserId: fbUser.id },
       {
+        company:          companyId,
         platformUsername: fbUser.name,
         displayName:      fbUser.name,
         profilePicture:   fbUser.picture?.data?.url,
@@ -331,7 +322,6 @@ socialRouter.get('/callback/facebook', async (req, res) => {
       { upsert: true, new: true }
     );
 
-    // 5. Enumerate user's FB Pages — each page is its own posting target.
     let pagesCount = 0, igCount = 0;
     try {
       const pagesRes = await axios.get('https://graph.facebook.com/v18.0/me/accounts', {
@@ -343,14 +333,14 @@ socialRouter.get('/callback/facebook', async (req, res) => {
       const pages = pagesRes.data?.data || [];
 
       for (const page of pages) {
-        // 5a. Save this Facebook Page (its own page-token is what you POST with)
         await SocialAccount.findOneAndUpdate(
           { user: userId, platform: 'facebook', platformUserId: page.id },
           {
+            company:          companyId,
             platformUsername: page.name,
             displayName:      page.name,
             profilePicture:   page.picture?.data?.url,
-            accessToken:      page.access_token, // page tokens don't expire if user token is long-lived
+            accessToken:      page.access_token,
             accountType:      'page',
             isActive:         true,
             lastSync:         new Date(),
@@ -360,16 +350,16 @@ socialRouter.get('/callback/facebook', async (req, res) => {
         );
         pagesCount++;
 
-        // 5b. If this Page has a linked IG Business account, save it as an IG row
         if (page.instagram_business_account?.id) {
           const ig = page.instagram_business_account;
           await SocialAccount.findOneAndUpdate(
             { user: userId, platform: 'instagram', platformUserId: ig.id },
             {
+              company:          companyId,
               platformUsername: ig.username,
               displayName:      ig.username,
               profilePicture:   ig.profile_picture_url,
-              accessToken:      page.access_token, // IG Graph API uses the linked Page's token
+              accessToken:      page.access_token,
               accountType:      'business',
               isActive:         true,
               lastSync:         new Date(),
@@ -380,10 +370,8 @@ socialRouter.get('/callback/facebook', async (req, res) => {
           igCount++;
         }
       }
-      logger.info(`FB connected for user ${userId}: ${pagesCount} pages, ${igCount} IG business accounts`);
+      logger.info(`FB connected for user ${userId} (company ${companyId}): ${pagesCount} pages, ${igCount} IG`);
     } catch (pagesErr) {
-      // Page enumeration failed (likely missing permission). Log and continue —
-      // the personal connection is already saved.
       logger.warn(`FB pages enum failed: ${pagesErr.response?.data?.error?.message || pagesErr.message}`);
     }
 
@@ -412,37 +400,36 @@ socialRouter.get('/callback/linkedin', async (req, res) => {
   }
 
   try {
-    const creds = await resolveLinkedInCreds(userId);
-    if (!creds) {
+    if (!socialConfig.isConfigured('linkedin')) {
       return res.redirect(`${process.env.CLIENT_URL}/accounts?error=linkedin&msg=${encodeURIComponent('LinkedIn app credentials missing on server')}`);
     }
-    logger.info(`LinkedIn callback using ${creds.source} keys for user ${userId}`);
+    const { clientId, clientSecret } = socialConfig.linkedin;
+    const u = await User.findById(userId).select('company').lean();
+    const companyId = u?.company || null;
 
-    // 1. Exchange code → access token (POST form-urlencoded)
     const params = new URLSearchParams({
       grant_type:    'authorization_code',
       code,
       redirect_uri:  `${process.env.SERVER_URL}/api/social/callback/linkedin`,
-      client_id:     creds.clientId,
-      client_secret: creds.clientSecret,
+      client_id:     clientId,
+      client_secret: clientSecret,
     });
     const tokenRes = await axios.post('https://www.linkedin.com/oauth/v2/accessToken', params.toString(), {
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     });
     const accessToken = tokenRes.data.access_token;
-    const expiresIn   = tokenRes.data.expires_in || 60 * 24 * 60 * 60;  // default 60 days
+    const expiresIn   = tokenRes.data.expires_in || 60 * 24 * 60 * 60;
     const tokenExpiry = new Date(Date.now() + expiresIn * 1000);
 
-    // 2. Fetch profile via OpenID Connect /userinfo (works with 'openid profile email' scopes).
-    //    The legacy /v2/me requires r_liteprofile which LinkedIn restricts to approved partners.
     const userRes = await axios.get('https://api.linkedin.com/v2/userinfo', {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    const li = userRes.data;  // { sub, name, email, picture, ... }
+    const li = userRes.data;
 
     await SocialAccount.findOneAndUpdate(
       { user: userId, platform: 'linkedin', platformUserId: li.sub },
       {
+        company:          companyId,
         platformUsername: li.name || li.email,
         displayName:      li.name || li.email,
         profilePicture:   li.picture,
@@ -563,6 +550,98 @@ adminRouter.get('/users', protect, authorize('admin','superadmin'), async (req, 
 });
 const audit = require('../services/audit/audit.service');
 const { cascadeDeleteUser: superAdminCascade } = require('../controllers/superAdmin.controller');
+const bcrypt = require('bcryptjs');
+
+// Allowed permission keys an admin can flip on a team member.
+const TEAM_MEMBER_PERMISSIONS = [
+  'canCreatePost', 'canSchedulePost', 'canManageInbox',
+  'canViewAnalytics', 'canConnectAccounts',
+];
+
+// Admin creates a team member (regular user) in their own company.
+// SuperAdmin can specify a company; admin's company is enforced for admins.
+adminRouter.post('/users', protect, authorize('admin', 'superadmin'), async (req, res) => {
+  try {
+    const { name, email, password, permissions = {} } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ success: false, message: 'Name, email aur password zaroori hain' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ success: false, message: 'Password 6+ characters ka hona chahiye' });
+    }
+    const existing = await User.findOne({ email });
+    if (existing) {
+      return res.status(400).json({ success: false, message: 'Yeh email already registered hai' });
+    }
+
+    const companyId = req.user.role === 'admin'
+      ? (req.user.company?._id || req.user.company)
+      : (req.body.company || req.user.company?._id || req.user.company);
+    if (!companyId) return res.status(400).json({ success: false, message: 'Company nahi mili' });
+
+    // Build a clean permissions object — only allow team-member keys
+    const safePerms = {};
+    for (const k of TEAM_MEMBER_PERMISSIONS) {
+      if (k in permissions) safePerms[`permissions.${k}`] = !!permissions[k];
+    }
+
+    const user = await User.create({
+      name, email, password,
+      role:            'user',
+      plan:            'basic',  // inherits basic-tier features; admin's plan limits gate posting
+      company:         companyId,
+      isEmailVerified: true,     // admin vouches for them — skip OTP
+      ...Object.fromEntries(Object.entries(safePerms).map(([k, v]) => [k.replace('permissions.', 'permissions.'), v])),
+    });
+    // Mongoose nested-key syntax for $set works on update; for create we need
+    // to set permissions via the document directly:
+    if (Object.keys(safePerms).length) {
+      for (const [k, v] of Object.entries(safePerms)) {
+        const key = k.replace('permissions.', '');
+        user.permissions[key] = v;
+      }
+      await user.save();
+    }
+
+    audit.log({ req, action: 'user.created', category: 'admin',
+      description: `${req.user.email} created team member ${email}`,
+      target: { type: 'user', id: user._id, name }, company: companyId });
+
+    res.status(201).json({
+      success: true,
+      message: `✅ Team member ${name} created`,
+      user: { id: user._id, name: user.name, email: user.email, role: user.role, permissions: user.permissions },
+    });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// Admin updates a team member's permissions (own company only).
+adminRouter.put('/users/:id/permissions', protect, authorize('admin', 'superadmin'), async (req, res) => {
+  try {
+    const target = await User.findById(req.params.id);
+    if (!target) return res.status(404).json({ success: false, message: 'User not found' });
+    if (target.role !== 'user') return res.status(403).json({ success: false, message: 'Only team-member permissions are editable here' });
+    if (req.user.role === 'admin') {
+      const myCo = String(req.user.company?._id || req.user.company);
+      if (String(target.company) !== myCo) {
+        return res.status(403).json({ success: false, message: 'Only own company users' });
+      }
+    }
+    const { permissions = {} } = req.body;
+    const safe = {};
+    for (const k of TEAM_MEMBER_PERMISSIONS) {
+      if (k in permissions) safe[`permissions.${k}`] = !!permissions[k];
+    }
+    const updated = await User.findByIdAndUpdate(target._id, { $set: safe }, { new: true }).select('-password');
+
+    audit.log({ req, action: 'user.permissions.updated', category: 'admin',
+      description: `${req.user.email} updated permissions for ${updated.email}`,
+      target: { type: 'user', id: updated._id, name: updated.name },
+      metadata: { permissions: updated.permissions }, company: updated.company });
+
+    res.json({ success: true, message: 'Permissions updated', user: updated });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
 adminRouter.put('/users/:id/plan', protect, authorize('admin','superadmin'), async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(req.params.id, { plan: req.body.plan }, { new: true });

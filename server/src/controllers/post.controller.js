@@ -30,11 +30,12 @@ exports.createPost = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Kam se kam ek platform select karein' });
     }
 
-    const accounts = await SocialAccount.find({
-      user: user._id,
-      platform: { $in: requested },
-      isActive: true,
-    }).select('_id platform accountType');
+    // Company-scoped: any team member can post via the admin's connected
+    // accounts. Demo users only see their own.
+    const accountFilter = user.isDemo
+      ? { user: user._id, platform: { $in: requested }, isActive: true }
+      : { company: user.company?._id || user.company, platform: { $in: requested }, isActive: true };
+    const accounts = await SocialAccount.find(accountFilter).select('_id platform accountType');
 
     const platformEntries = [];
     const missing = [];

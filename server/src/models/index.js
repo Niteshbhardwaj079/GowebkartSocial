@@ -29,15 +29,24 @@ const UserSchema = new mongoose.Schema({
   // (throttled to ~5 min/user to avoid DB load).
   lastLoginAt:  { type: Date },
   lastActiveAt: { type: Date },
-  // Per-admin capability flags. Only meaningful when role==='admin'.
-  // SuperAdmin always implicitly has all true; regular users always implicitly false.
+  // Capability flags. SuperAdmin always implicitly has all true. Admins
+  // get the team-management flags; team members (role='user') get the
+  // post/inbox/analytics flags.
   permissions: {
-    manageUsers:    { type: Boolean, default: true  },  // create/promote/block users
-    changePlans:    { type: Boolean, default: true  },  // change user plans
-    viewAllPosts:   { type: Boolean, default: true  },  // see all company posts
-    deletePosts:    { type: Boolean, default: false },  // delete others' posts
-    manageBilling:  { type: Boolean, default: false },  // payment / Razorpay
-    viewAuditLog:   { type: Boolean, default: true  },  // see company activity log
+    // ── Admin-level (relevant when role==='admin')
+    manageUsers:        { type: Boolean, default: true  },  // create/promote/block users
+    changePlans:        { type: Boolean, default: true  },  // change user plans
+    viewAllPosts:       { type: Boolean, default: true  },  // see all company posts
+    deletePosts:        { type: Boolean, default: false },  // delete others' posts
+    manageBilling:      { type: Boolean, default: false },  // payment / Razorpay / disconnect social
+    viewAuditLog:       { type: Boolean, default: true  },  // see company activity log
+
+    // ── Team-member-level (relevant when role==='user')
+    canCreatePost:      { type: Boolean, default: true  },  // create + post-now
+    canSchedulePost:    { type: Boolean, default: true  },  // schedule for later
+    canManageInbox:     { type: Boolean, default: true  },  // reply to comments/messages
+    canViewAnalytics:   { type: Boolean, default: true  },  // see analytics page
+    canConnectAccounts: { type: Boolean, default: false },  // connect/disconnect social accounts
   },
 }, { timestamps: true });
 

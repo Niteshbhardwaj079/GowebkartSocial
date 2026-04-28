@@ -27,7 +27,6 @@ const NAV_MANAGE = [
     icon:'⚙️', label:'Settings',
     children: [
       { to:'/settings',         icon:'👤', label:'General' },
-      { to:'/api-settings',     icon:'🔑', label:'API Keys' },
       { to:'/storage-settings', icon:'💾', label:'Storage' },
     ],
   },

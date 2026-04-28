@@ -131,9 +131,9 @@ export default function AccountsPage() {
         })}
       </div>
 
-      {/* API Settings Notice */}
-      <div style={{ marginTop:20, background:'#fff8e8', border:'1px solid #ffe0a0', borderRadius:'var(--radius)', padding:'12px 16px', fontSize:13 }}>
-        💡 <strong>Pehle API keys add karein:</strong> Accounts connect karne ke liye pehle <a href="/api-settings" style={{ color:'#0066cc', fontWeight:700 }}>API Settings</a> mein app keys daalni hongi.
+      {/* Info notice */}
+      <div style={{ marginTop:20, background:'#f0f7ff', border:'1px solid #c0d4ff', borderRadius:'var(--radius)', padding:'12px 16px', fontSize:13, color:'var(--muted)' }}>
+        💡 Social accounts <strong>company-wide shared</strong> hote hain — ek admin connect kare to poori team use kar sakti hai. Sirf admin/superadmin connect/disconnect kar sakte hain.
       </div>
     </div>
   );
