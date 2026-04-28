@@ -1,5 +1,6 @@
 const StorageSettings = require('../models/StorageSettings.model');
 const storageService  = require('../services/storage/storage.service');
+const storageConfig   = require('../config/storage');
 const logger          = require('../utils/logger');
 
 // ✅ GET storage settings (keys hidden)
@@ -212,86 +213,48 @@ exports.removeProvider = async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 };
 
-// ✅ UPLOAD FILE using user's configured storage
+// ✅ UPLOAD FILE — single platform-wide Cloudinary (config-driven)
 exports.uploadFile = async (req, res) => {
   try {
     if (!req.files?.length && !req.file) {
       return res.status(400).json({ success: false, message: 'Koi file upload nahi ki' });
     }
-
-    const files = req.files || [req.file];
-
-    // ── DEMO USER → Server ki apni Cloudinary use karo ──
-    if (req.user.isDemo) {
-      const cloudinary = require('../config/cloudinary');
-      const results = [];
-      for (const file of files) {
-        const result = await new Promise((resolve, reject) => {
-          const isVideo = file.mimetype.startsWith('video/');
-          const stream  = cloudinary.uploader.upload_stream(
-            { folder: 'social-saas/demo', resource_type: isVideo ? 'video' : 'image' },
-            (err, res) => err ? reject(err) : resolve({
-              url: res.secure_url, publicId: res.public_id,
-              type: isVideo ? 'video' : 'image', thumbnail: res.secure_url,
-              size: res.bytes, provider: 'cloudinary'
-            })
-          );
-          stream.end(file.buffer);
-        });
-        results.push(result);
-      }
-      return res.json({ success: true, files: results, provider: 'cloudinary', isDemo: true });
-    }
-
-    // ── REAL USER → Unki apni storage settings use karo ──
-    const settings = await StorageSettings.findOne({ user: req.user._id }).select(
-      '+cloudinary.cloudName +cloudinary.apiKey +cloudinary.apiSecret +cloudinary.folder ' +
-      '+aws_s3.accessKeyId +aws_s3.secretAccessKey +aws_s3.region +aws_s3.bucketName +aws_s3.folder ' +
-      '+imagekit.publicKey +imagekit.privateKey +imagekit.urlEndpoint +imagekit.folder'
-    );
-
-    let provider = settings?.activeProvider || 'local';
-    // Self-heal: if active is 'local' but the user actually has a provider
-    // configured, pick the first configured one (saves a click).
-    if (provider === 'local' && settings) {
-      for (const candidate of ['cloudinary', 'imagekit', 'aws_s3']) {
-        if (settings[candidate]?.isConfigured) { provider = candidate; break; }
-      }
-      if (provider !== 'local') {
-        await StorageSettings.findOneAndUpdate({ user: req.user._id }, { activeProvider: provider });
-      }
-    }
-    const config = settings?.[provider] || {};
-
-    // No provider at all → ask the user to set one up
-    if (provider === 'local') {
-      return res.status(400).json({
+    if (!storageConfig.isConfigured()) {
+      return res.status(500).json({
         success: false,
-        message: '⚠️ Storage configure nahi hai. Storage Settings me koi ek provider (Cloudinary / ImageKit / AWS S3) setup karein.',
-        redirect: '/storage-settings'
+        message: 'Cloudinary configure nahi hai. Server admin se contact karein (CLOUDINARY_API_SECRET env var missing).',
       });
     }
+
+    const files = req.files || [req.file];
+    const cfg   = storageConfig.cloudinary;
+    // Per-company sub-folder so different companies' assets don't collide.
+    const subFolder = req.user.isDemo
+      ? `${cfg.folder}/demo`
+      : `${cfg.folder}/${req.user.company?._id || req.user.company || req.user._id}`;
 
     const results = [];
     for (const file of files) {
       const result = await storageService.upload(file.buffer, file.mimetype, {
-        provider,
-        config,
-        folder: `${config.folder || 'social-saas'}/${req.user._id}`
+        provider: 'cloudinary',
+        config:   { cloudName: cfg.cloudName, apiKey: cfg.apiKey, apiSecret: cfg.apiSecret },
+        folder:   subFolder,
       });
       results.push(result);
     }
 
-    // Stats update karo
-    await StorageSettings.findOneAndUpdate(
+    // Best-effort stats — never block the response if it fails.
+    StorageSettings.findOneAndUpdate(
       { user: req.user._id },
       {
+        $setOnInsert: { user: req.user._id, company: req.user.company?._id, activeProvider: 'cloudinary' },
         $inc: { 'stats.totalUploads': results.length, 'stats.totalSize': results.reduce((s,r) => s + (r.size||0), 0) },
-        'stats.lastUploadAt': new Date()
-      }
-    );
+        'stats.lastUploadAt': new Date(),
+      },
+      { upsert: true }
+    ).catch(() => {});
 
-    res.json({ success: true, files: results, provider });
+    res.json({ success: true, files: results, provider: 'cloudinary' });
   } catch (e) {
     logger.error(`Upload error: ${e.message}`);
     res.status(500).json({ success: false, message: e.message });

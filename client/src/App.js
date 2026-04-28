@@ -17,11 +17,9 @@ import AdsPage                 from './pages/AdsPage';
 import PlansPage               from './pages/PlansPage';
 import SettingsPage            from './pages/SettingsPage';
 import AdminPage               from './pages/AdminPage';
-import ApiSettingsPage         from './pages/ApiSettingsPage';
 import SuperAdminPage          from './pages/SuperAdminPage';
 import InboxPage               from './pages/InboxPage';
 import CompanyPage             from './pages/CompanyPage';
-import StorageSettingsPage     from './pages/StorageSettingsPage';
 import NotificationSettingsPage from './pages/NotificationSettingsPage';
 import ExpirySettingsPage      from './pages/ExpirySettingsPage';
 import SupportPage             from './pages/SupportPage';
@@ -54,8 +52,6 @@ function AppContent() {
           <Route path="inbox"            element={<InboxPage />} />
           <Route path="analytics"        element={<AnalyticsPage />} />
           <Route path="accounts"         element={<AccountsPage />} />
-          <Route path="api-settings"     element={<ApiSettingsPage />} />
-          <Route path="storage-settings" element={<StorageSettingsPage />} />
           <Route path="company"          element={<CompanyPage />} />
           <Route path="ads"              element={<AdsPage />} />
           <Route path="plans"            element={<PlansPage />} />

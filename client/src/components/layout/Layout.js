@@ -23,13 +23,7 @@ const NAV_MANAGE = [
   { to:'/notifications', icon:'🔔', label:'Notifications'   },
   { to:'/ads',           icon:'📢', label:'Ads Manager'     },
   { to:'/plans',         icon:'💎', label:'Plans & Billing' },
-  {
-    icon:'⚙️', label:'Settings',
-    children: [
-      { to:'/settings',         icon:'👤', label:'General' },
-      { to:'/storage-settings', icon:'💾', label:'Storage' },
-    ],
-  },
+  { to:'/settings', icon:'⚙️', label:'Settings' },
 ];
 const MOB_NAV = [
   { to:'/dashboard', icon:'🏠', label:'Home'   },
